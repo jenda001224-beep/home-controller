@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home Controller — Flash</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #1c1c1e;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #2c2c2e;
+      border-radius: 20px;
+      padding: 36px 32px;
+      max-width: 480px;
+      width: 100%;
+      border: 1px solid #38383a;
+    }
+    .hero { text-align: center; margin-bottom: 28px; }
+    .hero .icon { font-size: 48px; margin-bottom: 10px; }
+    .hero h1 { font-size: 24px; font-weight: 700; }
+    .hero p { color: #8e8e93; font-size: 14px; margin-top: 6px; line-height: 1.5; }
+
+    /* ── File drop zone ── */
+    .dropzone {
+      border: 2px dashed #48484a;
+      border-radius: 14px;
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .dropzone.drag-over { border-color: #ff9500; background: #2a1f00; }
+    .dropzone.ready     { border-color: #30d158; border-style: solid; }
+    .dropzone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .dropzone .dz-icon { font-size: 32px; margin-bottom: 8px; }
+    .dropzone .dz-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .dropzone .dz-sub { font-size: 13px; color: #8e8e93; }
+
+    /* ── File checklist ── */
+    .file-list {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .file-item {
+      background: #1c1c1e;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .file-item .fi-check {
+      width: 20px; height: 20px; min-width: 20px;
+      border-radius: 50%;
+      border: 2px solid #48484a;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px;
+      transition: all .2s;
+    }
+    .file-item.loaded .fi-check {
+      background: #30d158; border-color: #30d158; color: #000; font-weight: 700;
+    }
+    .file-item .fi-name { font-family: "SF Mono", monospace; color: #ebebf5cc; }
+    .file-item .fi-addr { margin-left: auto; color: #636366; font-size: 11px; font-family: monospace; }
+    .file-item .fi-size { color: #8e8e93; font-size: 11px; }
+
+    /* ── Flash button ── */
+    #btn-flash {
+      display: block; width: 100%;
+      background: #ff9500; color: #fff;
+      border: none; border-radius: 14px;
+      font-size: 17px; font-weight: 600;
+      padding: 16px; cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+    #btn-flash:hover:not(:disabled) { opacity: .88; }
+    #btn-flash:active:not(:disabled) { transform: scale(.98); }
+    #btn-flash:disabled { opacity: .3; cursor: not-allowed; }
+
+    /* ── Progress ── */
+    .progress-wrap { margin-top: 18px; display: none; }
+    .progress-wrap.visible { display: block; }
+    .bar-bg { background: #3a3a3c; border-radius: 8px; height: 8px; overflow: hidden; }
+    .bar-fill { height: 100%; background: #ff9500; border-radius: 8px; width: 0%; transition: width .2s; }
+    .progress-label { font-size: 13px; color: #8e8e93; margin-top: 8px; text-align: center; }
+
+    /* ── Log ── */
+    #log {
+      margin-top: 16px; background: #1c1c1e;
+      border-radius: 10px; padding: 12px 14px;
+      font-family: "SF Mono", "Fira Code", monospace; font-size: 12px;
+      color: #30d158; max-height: 140px; overflow-y: auto;
+      display: none; border: 1px solid #38383a;
+    }
+    #log.visible { display: block; }
+    #log .err { color: #ff453a; }
+    #log .dim { color: #48484a; }
+
+    /* ── Result ── */
+    .result { display: none; text-align: center; padding: 18px 0 4px; }
+    .result.visible { display: block; }
+    .result .ri { font-size: 36px; margin-bottom: 6px; }
+    .result h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+    .result p { color: #8e8e93; font-size: 13px; line-height: 1.5; }
+
+    /* ── Steps ── */
+    .steps { margin-top: 24px; border-top: 1px solid #38383a; padding-top: 20px; }
+    .steps h3 {
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .08em;
+      color: #8e8e93; margin-bottom: 12px;
+    }
+    .step { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; }
+    .step-num {
+      background: #3a3a3c; border-radius: 50%;
+      width: 22px; height: 22px; min-width: 22px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #ff9500;
+    }
+    .step p { font-size: 13px; color: #ebebf5cc; line-height: 1.5; }
+    .step p b { color: #fff; }
+    .step p code {
+      background: #3a3a3c; border-radius: 4px;
+      padding: 1px 5px; font-family: monospace; font-size: 12px; color: #ff9500;
+    }
+
+    .warn {
+      background: #2a1500; border: 1px solid #ff9500; border-radius: 10px;
+      padding: 12px 14px; font-size: 13px; color: #ff9500;
+      margin-bottom: 16px; display: none;
+    }
+    #btn-download {
+      display: block; width: 100%;
+      background: transparent; color: #8e8e93;
+      border: 1px solid #38383a; border-radius: 14px;
+      font-size: 14px; font-weight: 500;
+      padding: 12px; cursor: pointer; margin-top: 12px;
+      transition: border-color .15s, color .15s;
+    }
+    #btn-download:hover { border-color: #636366; color: #fff; }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <div class="warn" id="warn-browser">
+    ⚠️ Web Serial requires <b>Chrome</b> or <b>Edge</b> on desktop.
+  </div>
+
+  <div class="hero">
+    <div class="icon">🏠</div>
+    <h1>Home Controller</h1>
+    <p>Apple Home display for T-Display S3 Pro.<br>Drop your compiled .bin files, then click Install.</p>
+  </div>
+
+  <!-- Drop zone -->
+  <div class="dropzone" id="dropzone">
+    <input type="file" id="file-input" multiple accept=".bin" />
+    <div class="dz-icon" id="dz-icon">📂</div>
+    <div class="dz-title" id="dz-title">Drop .bin files here</div>
+    <div class="dz-sub" id="dz-sub">or click to browse · 4 files from <code style="font-size:11px;color:#ff9500">.pio/build/tdisplay-s3-pro/</code></div>
+  </div>
+
+  <!-- File checklist -->
+  <div class="file-list" id="file-list">
+    <div class="file-item" id="fi-bootloader">
+      <div class="fi-check">✓</div>
+      <span class="fi-name">bootloader.bin</span>
+      <span class="fi-size" id="sz-bootloader"></span>
+      <span class="fi-addr">0x0000</span>
+    </div>
+    <div class="file-item" id="fi-partitions">
+      <div class="fi-check">✓</div>
+      <span class="fi-name">partitions.bin</span>
+      <span class="fi-size" id="sz-partitions"></span>
+      <span class="fi-addr">0x8000</span>
+    </div>
+    <div class="file-item" id="fi-boot_app0">
+      <div class="fi-check">✓</div>
+      <span class="fi-name">boot_app0.bin</span>
+      <span class="fi-size" id="sz-boot_app0"></span>
+      <span class="fi-addr">0xE000</span>
+    </div>
+    <div class="file-item" id="fi-firmware">
+      <div class="fi-check">✓</div>
+      <span class="fi-name">firmware.bin</span>
+      <span class="fi-size" id="sz-firmware"></span>
+      <span class="fi-addr">0x10000</span>
+    </div>
+  </div>
+
+  <button id="btn-flash" disabled>⚡ Install Firmware</button>
+  <button id="btn-download">⬇ Stáhnout tento flasher</button>
+
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="bar-bg"><div class="bar-fill" id="bar-fill"></div></div>
+    <div class="progress-label" id="progress-label"></div>
+  </div>
+
+  <div id="log"></div>
+
+  <div class="result" id="result-ok">
+    <div class="ri">✅</div>
+    <h2>Firmware installed!</h2>
+    <p>Device is rebooting. Follow the steps below.</p>
+  </div>
+  <div class="result" id="result-err">
+    <div class="ri">❌</div>
+    <h2>Flash failed</h2>
+    <p>Hold <b>BOOT</b>, tap <b>RST</b>, release <b>BOOT</b> to enter bootloader, then try again.</p>
+  </div>
+
+  <div class="steps">
+    <h3>After flashing</h3>
+    <div class="step"><div class="step-num">1</div>
+      <p>Display shows <b>HomeController-Setup</b></p></div>
+    <div class="step"><div class="step-num">2</div>
+      <p>Connect phone to <code>HomeController-Setup</code> WiFi</p></div>
+    <div class="step"><div class="step-num">3</div>
+      <p>Setup page opens — enter <b>WiFi + HA IP + Long-Lived Token</b></p></div>
+    <div class="step"><div class="step-num">4</div>
+      <p>Save → rooms appear. Tap to toggle, long-press for brightness & colour.</p></div>
+  </div>
+
+</div>
+
+<script type="module">
+import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.4.1/bundle.js';
+
+// Flash addresses for ESP32-S3 / huge_app partition table
+const ADDR_MAP = {
+  'bootloader.bin': 0x0000,
+  'partitions.bin': 0x8000,
+  'boot_app0.bin':  0xE000,
+  'firmware.bin':   0x10000,
+};
+
+const loaded = {};   // filename → ArrayBuffer
+
+if (!('serial' in navigator)) {
+  document.getElementById('warn-browser').style.display = 'block';
+  document.getElementById('btn-flash').disabled = true;
+}
+
+// ── File loading ──────────────────────────────────────────────────────────
+
+function readFileAsBuffer(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result);
+    r.onerror = rej;
+    r.readAsArrayBuffer(file);
+  });
+}
+
+async function handleFiles(files) {
+  for (const file of files) {
+    const name = file.name;
+    if (!(name in ADDR_MAP)) continue;
+    loaded[name] = await readFileAsBuffer(file);
+
+    const item = document.getElementById('fi-' + name.replace('.bin',''));
+    if (item) {
+      item.classList.add('loaded');
+      document.getElementById('sz-' + name.replace('.bin',''))
+              .textContent = (file.size / 1024).toFixed(1) + ' KB';
+    }
+  }
+
+  const allLoaded = Object.keys(ADDR_MAP).every(k => loaded[k]);
+  document.getElementById('btn-flash').disabled = !allLoaded;
+
+  const dz = document.getElementById('dropzone');
+  if (allLoaded) {
+    dz.classList.add('ready');
+    document.getElementById('dz-icon').textContent  = '✅';
+    document.getElementById('dz-title').textContent = 'All files loaded — ready to flash!';
+    document.getElementById('dz-sub').textContent   = 'Click to replace files';
+  } else {
+    const missing = Object.keys(ADDR_MAP).filter(k => !loaded[k]);
+    document.getElementById('dz-sub').textContent = `Still missing: ${missing.join(', ')}`;
+  }
+}
+
+// Drag & drop
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+document.getElementById('file-input').addEventListener('change', e => {
+  handleFiles(e.target.files);
+});
+
+// ── Flashing ──────────────────────────────────────────────────────────────
+
+const btn         = document.getElementById('btn-flash');
+const progressW   = document.getElementById('progress-wrap');
+const barFill     = document.getElementById('bar-fill');
+const progressLbl = document.getElementById('progress-label');
+const logEl       = document.getElementById('log');
+
+function log(msg, cls = '') {
+  logEl.classList.add('visible');
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = msg;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setProgress(pct, label) {
+  progressW.classList.add('visible');
+  barFill.style.width = pct + '%';
+  progressLbl.textContent = label;
+}
+
+document.getElementById('btn-download').addEventListener('click', () => {
+  const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([html], { type: 'text/html' })),
+    download: 'homecontroller-flash.html',
+  });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+
+btn.addEventListener('click', async () => {
+  btn.disabled = true;
+  document.getElementById('result-ok').classList.remove('visible');
+  document.getElementById('result-err').classList.remove('visible');
+  logEl.innerHTML = '';
+
+  let port, transport, loader;
+
+  try {
+    port      = await navigator.serial.requestPort();
+    transport = new Transport(port, true);
+
+    log('Connecting to ESP32-S3…', 'dim');
+    setProgress(5, 'Connecting…');
+
+    const terminal = {
+      clean() {},
+      writeLine(d) { log(d, 'dim'); },
+      write() {},
+    };
+
+    loader = new ESPLoader({ transport, baudrate: 921600, terminal });
+    await loader.main();
+
+    const chip = await loader.chip.CHIP_NAME;
+    log(`Connected: ${chip}`);
+    setProgress(15, `Connected — ${chip}`);
+
+    // Build file array in flash-address order
+    const fileArray = Object.entries(ADDR_MAP)
+      .sort((a, b) => a[1] - b[1])
+      .map(([name, address]) => ({
+        data: new Uint8Array(loaded[name]),
+        address,
+      }));
+
+    log('Writing flash…');
+    let lastFile = -1;
+
+    await loader.write_flash({
+      fileArray,
+      flash_size: 'keep',
+      flashMode:  'dio',
+      flashFreq:  '80m',
+      eraseAll:   false,
+      compress:   true,
+      reportProgress(fileIndex, written, total) {
+        if (fileIndex !== lastFile) {
+          lastFile = fileIndex;
+          const name = Object.keys(ADDR_MAP).sort((a,b) => ADDR_MAP[a]-ADDR_MAP[b])[fileIndex];
+          log(`Writing ${name} @ 0x${ADDR_MAP[name].toString(16)}`);
+        }
+        const pct = 15 + ((fileIndex + written/total) / fileArray.length) * 80;
+        setProgress(Math.round(pct),
+          `File ${fileIndex+1}/${fileArray.length} — ${Math.round(written/total*100)}%`);
+      },
+    });
+
+    setProgress(100, 'Done!');
+    log('Flash complete — rebooting…');
+    await loader.after_flash('hard_reset');
+    document.getElementById('result-ok').classList.add('visible');
+
+  } catch (err) {
+    log('Error: ' + err.message, 'err');
+    document.getElementById('result-err').classList.add('visible');
+  } finally {
+    try { if (transport) await transport.disconnect(); } catch (_) {}
+    try { if (port)      await port.close(); }           catch (_) {}
+    btn.disabled = false;
+    btn.textContent = '⚡ Install Again';
+  }
+});
+</script>
+</body>
+</html>
