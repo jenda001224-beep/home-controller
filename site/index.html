@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home Controller — Flash</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1c1c1e;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #2c2c2e;
+      border-radius: 20px;
+      padding: 40px 36px 36px;
+      max-width: 500px;
+      width: 100%;
+      border: 1px solid #38383a;
+    }
+
+    .hero { text-align: center; margin-bottom: 32px; }
+    .hero .icon { font-size: 52px; margin-bottom: 12px; }
+    .hero h1 { font-size: 26px; font-weight: 700; letter-spacing: -.4px; }
+    .hero p  { color: #8e8e93; font-size: 15px; margin-top: 6px; line-height: 1.5; }
+
+    esp-web-install-button {
+      display: block;
+      width: 100%;
+    }
+
+    esp-web-install-button::part(button) {
+      display: block;
+      width: 100%;
+      background: #ff9500;
+      color: #fff;
+      border: none;
+      border-radius: 14px;
+      font-size: 17px;
+      font-weight: 600;
+      padding: 16px;
+      cursor: pointer;
+      letter-spacing: -.2px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    }
+
+    esp-web-install-button::part(button):hover {
+      opacity: .88;
+    }
+
+    .unsupported-message {
+      background: #3a2a00;
+      border: 1px solid #ff9500;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 14px;
+      color: #ff9500;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .steps {
+      margin-top: 28px;
+      border-top: 1px solid #38383a;
+      padding-top: 24px;
+    }
+    .steps h3 {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #8e8e93;
+      margin-bottom: 14px;
+    }
+    .step {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .step-num {
+      background: #3a3a3c;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #ff9500;
+    }
+    .step-text { font-size: 14px; color: #ebebf5cc; line-height: 1.5; }
+    .step-text b { color: #fff; }
+    .step-text code {
+      background: #3a3a3c;
+      border-radius: 5px;
+      padding: 1px 6px;
+      font-family: "SF Mono", monospace;
+      font-size: 12px;
+      color: #ff9500;
+    }
+
+    .footnote {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: #48484a;
+    }
+    .footnote a { color: #0a84ff; text-decoration: none; }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <div class="hero">
+    <div class="icon">🏠</div>
+    <h1>Home Controller</h1>
+    <p>Apple Home-style controller for LilyGO T-Display S3 Pro.<br>
+       Plug in your board, then click Install.</p>
+  </div>
+
+  <esp-web-install-button manifest="manifest.json">
+    <span slot="unsupported">
+      <div class="unsupported-message">
+        ⚠️ Web Serial requires <b>Chrome</b> or <b>Edge</b> on desktop.<br>
+        Safari and Firefox are not supported.
+      </div>
+    </span>
+  </esp-web-install-button>
+
+  <div class="steps">
+    <h3>After flashing</h3>
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-text">
+        Your display shows <b>"HomeController-Setup"</b>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-text">
+        Connect your phone to the <code>HomeController-Setup</code> WiFi network
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-text">
+        A setup page opens. Enter your <b>WiFi name &amp; password</b> and your
+        <b>Home Assistant IP + Long-Lived Token</b>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-text">
+        Save → device reboots → your rooms appear. Tap to toggle,
+        long-press for brightness &amp; colour.
+      </div>
+    </div>
+  </div>
+
+  <p class="footnote">
+    Requires Chrome or Edge on desktop &nbsp;·&nbsp;
+    <a href="https://github.com/Xinyuan-LilyGO/T-Display-S3-Pro" target="_blank">Board pinout</a>
+  </p>
+</div>
+</body>
+</html>
