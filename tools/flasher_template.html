@@ -246,7 +246,7 @@
 
 <script type="module">
 // esptool-js — loaded from CDN (the only online dependency)
-import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.4.1/bundle.js';
+import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.2.0/bundle.js';
 
 // ── Firmware blobs injected by make_flasher.py ──────────────────────────
 // Each entry: { b64: "<base64 string>", addr: <flash address (decimal)> }
@@ -317,9 +317,14 @@ btn.addEventListener('click', async () => {
     log(`Connected: ${chip}`);
     setProgress(15, `Connected to ${chip}`);
 
-    // Decode binary parts
+    // esptool-js 0.2.x expects binary strings, not Uint8Array
+    function b64ToBinStr(b64) {
+      const bin = atob(b64);
+      return bin;
+    }
+
     const fileArray = FIRMWARE_PARTS.map(p => ({
-      data:    b64ToUint8(p.b64),
+      data:    b64ToBinStr(p.b64),
       address: p.addr,
     }));
 
@@ -328,11 +333,11 @@ btn.addEventListener('click', async () => {
 
     await loader.write_flash({
       fileArray,
-      flash_size:  'keep',
-      flashMode:   'dio',
-      flashFreq:   '80m',
-      eraseAll:    false,
-      compress:    true,
+      flash_size: 'keep',
+      flash_mode: 'dio',
+      flash_freq: '80m',
+      erase_all:  false,
+      compress:   true,
       reportProgress(fileIndex, written, total) {
         if (fileIndex !== lastFile) {
           lastFile = fileIndex;
@@ -347,7 +352,7 @@ btn.addEventListener('click', async () => {
 
     setProgress(100, 'Done!');
     log('Flash complete — rebooting device.');
-    await loader.after_flash('hard_reset');
+    await loader.after_flash();
     resultOk.classList.add('visible');
 
   } catch (err) {
