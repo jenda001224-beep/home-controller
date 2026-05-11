@@ -32,12 +32,17 @@ static bool config_is_valid() {
 }
 
 static void run_setup_portal() {
-    ui.set_status("Setup mode\nJoin WiFi:\n" SETUP_AP_NAME "\nthen open 192.168.4.1");
-    lv_timer_handler();
+    ui.set_status("Setup mode\n"
+                  "1. Join WiFi:\n" SETUP_AP_NAME "\n"
+                  "2. Open Safari:\n"
+                  "http://192.168.4.1");
+    // Give LVGL time to fully render before WiFi takes over
+    for (int i = 0; i < 20; i++) { lv_timer_handler(); delay(10); }
 
     WiFiManager wm;
     wm.setTitle("Home Controller Setup");
     wm.setDarkMode(true);
+    wm.setConfigPortalBlocking(false);
 
     WiFiManagerParameter p_host ("ha_host",  "Home Assistant IP or hostname",
                                   cfg_ha_host.c_str(), 64);
@@ -49,15 +54,26 @@ static void run_setup_portal() {
     wm.addParameter(&p_port);
     wm.addParameter(&p_token);
 
+    bool saved = false;
     wm.setSaveParamsCallback([&]() {
         prefs.begin("hc_cfg", false);
         prefs.putString("ha_host",  p_host.getValue());
         prefs.putString("ha_port",  p_port.getValue());
         prefs.putString("ha_token", p_token.getValue());
         prefs.end();
+        saved = true;
     });
 
     wm.startConfigPortal(SETUP_AP_NAME);
+
+    while (!saved) {
+        wm.process();
+        lv_timer_handler();
+        delay(5);
+    }
+
+    ui.set_status("Saved!\nRebooting...");
+    for (int i = 0; i < 30; i++) { lv_timer_handler(); delay(10); }
     ESP.restart();
 }
 
