@@ -3,307 +3,225 @@
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <WebServer.h>
-#include <HomeSpan.h>
 #include <ArduinoJson.h>
 #include <lvgl.h>
 
 #include "config.h"
 #include "display/display.h"
-#include "homekit/light_config.h"
-#include "homekit/hk_client.h"
-#include "homekit/hk_accessory.h"
+#include "dirigera/dirigera_client.h"
 #include "ui/ui.h"
 
-// ── Globals ────────────────────────────────────────────────────────────────
+// ── Globals ──────────────────────────────────────────────────────────────────
 
-static HKClient hk;
-static UI       ui;
+static DirigeraClient dc;
+static UI             ui;
 
 static volatile bool g_update_pending = false;
 static HAEntity      g_pending_entity;
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+static Preferences prefs;
 
-// Render LVGL a few frames so the display actually shows the status message
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 static void flush_ui(int ms = 100) {
     uint32_t t = millis();
-    while (millis() - t < (uint32_t)ms) {
-        lv_timer_handler();
-        delay(10);
-    }
+    while (millis() - t < (uint32_t)ms) { lv_timer_handler(); delay(10); }
 }
 
-// Blink the white LED (GPIO 38) — visual confirmation firmware runs
 static void blink_led(int n = 3) {
     pinMode(PIN_LED, OUTPUT);
     for (int i = 0; i < n; i++) {
-        digitalWrite(PIN_LED, HIGH);
-        delay(150);
-        digitalWrite(PIN_LED, LOW);
-        delay(150);
+        digitalWrite(PIN_LED, HIGH); delay(150);
+        digitalWrite(PIN_LED, LOW);  delay(150);
     }
 }
 
-// ── WiFi setup (non-blocking portal so display stays live) ─────────────────
+// ── DIRIGERA config storage ──────────────────────────────────────────────────
 
-static void run_wifi_portal() {
-    ui.set_status("WiFi setup:\n1. Join WiFi:\n" SETUP_AP_NAME
-                  "\n2. Open Safari:\nhttp://192.168.4.1");
-    flush_ui(200);
-
-    WiFiManager wm;
-    wm.setTitle("Home Controller");
-    wm.setDarkMode(true);
-    wm.setConfigPortalBlocking(false);
-    wm.startConfigPortal(SETUP_AP_NAME);
-
-    while (WiFi.status() != WL_CONNECTED) {
-        wm.process();
-        lv_timer_handler();
-        delay(5);
-    }
+static String load_dirigera_ip()    { prefs.begin("hc_dr",true); String v=prefs.getString("ip","");    prefs.end(); return v; }
+static String load_dirigera_token() { prefs.begin("hc_dr",true); String v=prefs.getString("token",""); prefs.end(); return v; }
+static void   save_dirigera(const String& ip, const String& token) {
+    prefs.begin("hc_dr",false);
+    prefs.putString("ip",    ip);
+    prefs.putString("token", token);
+    prefs.end();
+}
+static void clear_dirigera() {
+    prefs.begin("hc_dr",false); prefs.clear(); prefs.end();
 }
 
-// ── Light config web server ────────────────────────────────────────────────
+// ── Setup web server (DIRIGERA pairing) ──────────────────────────────────────
 
-static const char CONFIG_HTML[] PROGMEM = R"rawhtml(
+static const char SETUP_HTML[] PROGMEM = R"html(
 <!DOCTYPE html><html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Home Controller — Light Setup</title>
+<title>Home Controller Setup</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#1c1c1e;color:#fff;font-family:-apple-system,sans-serif;padding:20px}
-h1{font-size:22px;margin-bottom:6px}
-p.sub{color:#8e8e93;font-size:14px;margin-bottom:20px}
-.card{background:#2c2c2e;border-radius:16px;padding:16px;margin-bottom:16px}
-.card h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8e8e93;margin-bottom:12px}
-.light-row{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
-.light-row input,.light-row select{background:#3a3a3c;border:1px solid #48484a;color:#fff;
-  border-radius:8px;padding:8px 10px;font-size:14px;flex:1;min-width:0}
-.light-row select{flex:0 0 90px}
-.del{background:#ff453a;border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:14px}
-.add-btn{background:#3a3a3c;border:1px dashed #636366;color:#8e8e93;border-radius:8px;
-  padding:10px;width:100%;cursor:pointer;font-size:14px;margin-top:4px}
-.save-btn{background:#ff9500;border:none;color:#fff;border-radius:12px;padding:14px;
-  width:100%;font-size:17px;font-weight:600;cursor:pointer;margin-top:8px}
-.code{background:#3a3a3c;border-radius:10px;padding:12px;text-align:center;
-  font-size:22px;font-weight:700;letter-spacing:4px;color:#ff9500;margin:8px 0}
-.ok{display:none;background:#30d158;border-radius:12px;padding:14px;text-align:center;font-size:16px;margin-top:12px}
+body{background:#1c1c1e;color:#fff;font-family:-apple-system,sans-serif;padding:24px}
+h1{font-size:22px;margin-bottom:6px}p.sub{color:#8e8e93;font-size:14px;margin-bottom:24px}
+.card{background:#2c2c2e;border-radius:16px;padding:20px;margin-bottom:16px}
+.card h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#8e8e93;margin-bottom:12px}
+input{display:block;width:100%;background:#3a3a3c;border:1px solid #48484a;color:#fff;
+  border-radius:10px;padding:12px 14px;font-size:16px;margin-bottom:12px}
+.btn{display:block;width:100%;background:#ff9500;border:none;color:#fff;border-radius:12px;
+  padding:14px;font-size:17px;font-weight:600;cursor:pointer}
+.btn:disabled{opacity:.4}
+.status{margin-top:14px;font-size:14px;color:#8e8e93;text-align:center;min-height:20px}
+.ok{color:#30d158}.err{color:#ff453a}
+.steps{margin-top:8px;font-size:13px;color:#636366;line-height:1.8;padding-left:4px}
 </style>
 </head>
 <body>
 <h1>&#127968; Home Controller</h1>
-<p class="sub">Configure your lights, then open Apple Home and add the accessory.</p>
+<p class="sub">Connect to your IKEA DIRIGERA hub</p>
 
 <div class="card">
-<h2>Your Lights</h2>
-<div id="list"></div>
-<button class="add-btn" onclick="addLight()">+ Add light</button>
+<h2>DIRIGERA Hub</h2>
+<input type="text" id="ip" placeholder="Hub IP address (e.g. 192.168.1.50)"
+       inputmode="decimal">
+<button class="btn" id="btn" onclick="startPair()">Pair with DIRIGERA</button>
+<div class="status" id="status"></div>
+<div class="steps">
+1. Enter the IP address of your DIRIGERA hub<br>
+2. Click Pair<br>
+3. Press the action button on the <b>back</b> of DIRIGERA (within 30s)<br>
+4. Done — device reboots and connects
 </div>
-
-<div class="card">
-<h2>Apple Home Pairing Code</h2>
-<div class="code" id="code">loading...</div>
-<p style="color:#8e8e93;font-size:13px;text-align:center">
-  Open Apple Home → + → Add Accessory → Enter code above
-</p>
 </div>
-
-<button class="save-btn" onclick="save()">Save &amp; Reboot</button>
-<div class="ok" id="ok">&#10003; Saved! Rebooting…</div>
 
 <script>
-var lights = [];
-var idx = 0;
+var polling = false;
 
-function addLight(n,r,t){
-  n=n||''; r=r||''; t=t||'dimmer';
-  var id='l'+idx++;
-  lights.push({id:id,name:n,room:r,type:t});
-  render();
+function startPair() {
+  var ip = document.getElementById('ip').value.trim();
+  if (!ip) { setStatus('Enter the hub IP address','err'); return; }
+  document.getElementById('btn').disabled = true;
+  setStatus('Contacting hub...');
+  fetch('/pair_start?ip='+encodeURIComponent(ip))
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (d.ok) {
+        setStatus('&#128276; Press the button on the back of DIRIGERA now!');
+        pollStatus();
+      } else {
+        setStatus('Error: '+d.msg,'err');
+        document.getElementById('btn').disabled=false;
+      }
+    }).catch(function(e){
+      setStatus('Network error','err');
+      document.getElementById('btn').disabled=false;
+    });
 }
 
-function delLight(id){
-  lights=lights.filter(function(l){return l.id!==id});
-  render();
+function pollStatus() {
+  setTimeout(function(){
+    fetch('/pair_status').then(function(r){return r.json()}).then(function(d){
+      if (d.done) {
+        setStatus('&#10003; Paired! Rebooting...','ok');
+      } else if (d.failed) {
+        setStatus('Timed out — button not pressed in time. Try again.','err');
+        document.getElementById('btn').disabled=false;
+      } else {
+        setStatus(d.msg || 'Waiting for button press...');
+        pollStatus();
+      }
+    }).catch(function(){pollStatus()});
+  }, 1500);
 }
 
-function render(){
-  var el=document.getElementById('list');
-  el.innerHTML='';
-  lights.forEach(function(l){
-    var row=document.createElement('div');
-    row.className='light-row';
-    row.innerHTML=
-      '<input placeholder="Light name (e.g. Ceiling)" value="'+esc(l.name)+'" oninput="upd(\''+l.id+'\',\'name\',this.value)">'+
-      '<input placeholder="Room (e.g. Living)" value="'+esc(l.room)+'" oninput="upd(\''+l.id+'\',\'room\',this.value)">'+
-      '<select onchange="upd(\''+l.id+'\',\'type\',this.value)">'+
-        '<option value="switch"'+(l.type=='switch'?' selected':'')+'>Switch</option>'+
-        '<option value="dimmer"'+(l.type=='dimmer'?' selected':'')+'>Dimmer</option>'+
-        '<option value="color"'+(l.type=='color'?' selected':'')+'>Color</option>'+
-      '</select>'+
-      '<button class="del" onclick="delLight(\''+l.id+'\')">&#10005;</button>';
-    el.appendChild(row);
-  });
+function setStatus(msg,cls) {
+  var el = document.getElementById('status');
+  el.innerHTML = msg;
+  el.className = 'status '+(cls||'');
 }
-
-function upd(id,key,val){
-  lights.forEach(function(l){if(l.id===id)l[key]=val});
-}
-
-function esc(s){return (s||'').replace(/"/g,'&quot;')}
-
-function save(){
-  // Re-number IDs
-  lights.forEach(function(l,i){l.id='l'+i});
-  fetch('/save',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(lights)
-  }).then(function(){
-    document.getElementById('ok').style.display='block';
-  }).catch(function(e){alert('Error: '+e)});
-}
-
-// Fetch pairing code from device
-fetch('/code').then(function(r){return r.text()})
-  .then(function(t){document.getElementById('code').textContent=t})
-  .catch(function(){document.getElementById('code').textContent='466-45-544'});
-
-// If reopening setup with existing config
-fetch('/lights').then(function(r){return r.json()})
-  .then(function(arr){
-    lights=arr; idx=arr.length; render();
-  }).catch(function(){});
 </script>
 </body></html>
-)rawhtml";
+)html";
 
-static WebServer* cfg_server = nullptr;
-static bool       cfg_saved  = false;
+static WebServer* cfg_srv = nullptr;
 
-static void handle_config_root() {
-    cfg_server->send(200, "text/html; charset=utf-8",
-                     String(FPSTR(CONFIG_HTML)));
+// Pairing state machine
+enum class PairState { IDLE, WAITING, DONE, FAILED };
+static PairState  pair_state = PairState::IDLE;
+static String     pair_ip;
+
+static void handle_root()    { cfg_srv->send(200,"text/html;charset=utf-8", String(FPSTR(SETUP_HTML))); }
+static void handle_pair_status() {
+    String json;
+    if (pair_state == PairState::DONE)   json = "{\"done\":true}";
+    else if (pair_state == PairState::FAILED) json = "{\"failed\":true}";
+    else json = "{\"done\":false,\"failed\":false,\"msg\":\"Waiting...\"}";
+    cfg_srv->send(200,"application/json", json);
+}
+static void handle_pair_start() {
+    if (!cfg_srv->hasArg("ip")) { cfg_srv->send(400,"application/json","{\"ok\":false,\"msg\":\"No IP\"}"); return; }
+    pair_ip    = cfg_srv->arg("ip");
+    pair_state = PairState::WAITING;
+    cfg_srv->send(200,"application/json","{\"ok\":true}");
 }
 
-static void handle_config_lights() {
-    std::vector<LightCfg> existing;
-    lc_load(existing);
-    String json = "[";
-    for (size_t i = 0; i < existing.size(); i++) {
-        if (i) json += ",";
-        json += "{\"id\":\"" + existing[i].id + "\","
-                "\"name\":\"" + existing[i].name + "\","
-                "\"room\":\"" + existing[i].room + "\","
-                "\"type\":\"";
-        switch (existing[i].type) {
-            case LightType::SWITCH: json += "switch"; break;
-            case LightType::COLOR:  json += "color";  break;
-            default:                json += "dimmer"; break;
-        }
-        json += "\"}";
-    }
-    json += "]";
-    cfg_server->send(200, "application/json", json);
-}
-
-static void handle_config_code() {
-    cfg_server->send(200, "text/plain", HK_DISPLAY_CODE);
-}
-
-static void handle_config_save() {
-    if (!cfg_server->hasArg("plain")) {
-        cfg_server->send(400, "text/plain", "No body");
-        return;
-    }
-    String body = cfg_server->arg("plain");
-
-    DynamicJsonDocument doc(4096);
-    if (deserializeJson(doc, body) != DeserializationError::Ok) {
-        cfg_server->send(400, "text/plain", "Bad JSON");
-        return;
-    }
-
-    std::vector<LightCfg> lights;
-    int i = 0;
-    for (JsonObject obj : doc.as<JsonArray>()) {
-        LightCfg cfg;
-        cfg.id   = "l" + String(i++);
-        cfg.name = obj["name"].as<String>();
-        cfg.room = obj["room"].as<String>();
-        String t = obj["type"].as<String>();
-        if (t == "switch") cfg.type = LightType::SWITCH;
-        else if (t == "color") cfg.type = LightType::COLOR;
-        else cfg.type = LightType::DIMMER;
-        if (cfg.name.length() > 0 && cfg.room.length() > 0)
-            lights.push_back(cfg);
-    }
-
-    if (lights.empty()) {
-        cfg_server->send(400, "text/plain", "No valid lights");
-        return;
-    }
-
-    lc_save(lights);
-    cfg_server->send(200, "text/plain", "OK");
-    cfg_saved = true;
-}
-
-static void run_light_config_server() {
-    String ip = WiFi.localIP().toString();
-    ui.set_status(("Configure lights:\nhttp://" + ip).c_str());
+static void run_setup_server() {
+    String ip_str = WiFi.localIP().toString();
+    ui.set_status(("Configure:\nhttp://" + ip_str).c_str());
     flush_ui(200);
 
-    cfg_server = new WebServer(80);
-    cfg_server->on("/",       HTTP_GET,  handle_config_root);
-    cfg_server->on("/lights", HTTP_GET,  handle_config_lights);
-    cfg_server->on("/code",   HTTP_GET,  handle_config_code);
-    cfg_server->on("/save",   HTTP_POST, handle_config_save);
-    cfg_server->begin();
+    cfg_srv = new WebServer(80);
+    cfg_srv->on("/",            HTTP_GET, handle_root);
+    cfg_srv->on("/pair_start",  HTTP_GET, handle_pair_start);
+    cfg_srv->on("/pair_status", HTTP_GET, handle_pair_status);
+    cfg_srv->begin();
 
-    while (!cfg_saved) {
-        cfg_server->handleClient();
+    while (true) {
+        cfg_srv->handleClient();
         lv_timer_handler();
+
+        if (pair_state == PairState::WAITING) {
+            ui.set_status(("Configure:\nhttp://" + ip_str + "\n\nPress button on\nDIRIGERA hub!").c_str());
+            flush_ui(50);
+            pair_state = PairState::IDLE;  // prevent re-entry
+
+            String token;
+            bool ok = DirigeraClient::pair(pair_ip, token);
+            if (ok) {
+                save_dirigera(pair_ip, token);
+                pair_state = PairState::DONE;
+                ui.set_status("Paired!\nRebooting...");
+                flush_ui(2000);
+                ESP.restart();
+            } else {
+                pair_state = PairState::FAILED;
+                ui.set_status(("Configure:\nhttp://" + ip_str + "\n\nPairing failed.\nTry again.").c_str());
+                flush_ui(50);
+            }
+        }
         delay(5);
     }
-
-    cfg_server->stop();
-    delete cfg_server;
-    cfg_server = nullptr;
-
-    ui.set_status("Saved! Rebooting...");
-    flush_ui(1500);
-    ESP.restart();
 }
 
-// ── setup / loop ───────────────────────────────────────────────────────────
+// ── setup / loop ─────────────────────────────────────────────────────────────
 
 void setup() {
     Serial.begin(115200);
     pinMode(PIN_RESET_BTN, INPUT_PULLUP);
 
-    // Display — force backlight on immediately, then init LVGL
     display_init();
-    ui.begin(&hk);
+    ui.begin(&dc);
     ui.set_status("Starting...");
     flush_ui(200);
 
-    // 3 LED blinks = firmware is alive (GPIO 38, white LED)
     blink_led(3);
 
-    // ── Factory reset: hold BOOT button 3 s ──────────────────────────────
+    // Factory reset: hold BOOT 3 s
     if (digitalRead(PIN_RESET_BTN) == LOW) {
         uint32_t held = millis();
-        ui.set_status("Hold 3 s to\nfactory reset...");
+        ui.set_status("Hold 3s to\nfactory reset...");
         flush_ui(50);
         while (digitalRead(PIN_RESET_BTN) == LOW) {
             lv_timer_handler();
             if (millis() - held > 3000) {
-                Preferences prefs;
-                prefs.begin("hc_cfg", false); prefs.clear(); prefs.end();
-                lc_clear();
+                clear_dirigera();
                 WiFiManager wm; wm.resetSettings();
                 ui.set_status("Reset done.\nRebooting...");
                 flush_ui(1500);
@@ -312,88 +230,49 @@ void setup() {
         }
     }
 
-    // ── WiFi ─────────────────────────────────────────────────────────────
+    // WiFi
     ui.set_status("Connecting to WiFi...");
     flush_ui(50);
-
     WiFiManager wm;
-    wm.setConfigPortalBlocking(false);
     wm.setTitle("Home Controller");
     wm.setDarkMode(true);
-
+    wm.setConfigPortalBlocking(false);
     if (!wm.autoConnect(SETUP_AP_NAME)) {
-        // Portal started — update display and keep looping
-        ui.set_status("WiFi setup:\n1. Join WiFi:\n" SETUP_AP_NAME
-                      "\n2. Open Safari:\nhttp://192.168.4.1");
+        ui.set_status("WiFi setup:\nJoin " SETUP_AP_NAME "\nOpen Safari:\nhttp://192.168.4.1");
         flush_ui(50);
-        while (WiFi.status() != WL_CONNECTED) {
-            wm.process();
-            lv_timer_handler();
-            delay(5);
-        }
+        while (WiFi.status() != WL_CONNECTED) { wm.process(); lv_timer_handler(); delay(5); }
+    }
+    Serial.printf("WiFi: %s\n", WiFi.localIP().toString().c_str());
+
+    // DIRIGERA config
+    String dip   = load_dirigera_ip();
+    String dtok  = load_dirigera_token();
+    if (dip.isEmpty() || dtok.isEmpty()) {
+        run_setup_server();  // never returns
     }
 
-    Serial.printf("WiFi connected: %s\n", WiFi.localIP().toString().c_str());
+    // Connect to DIRIGERA
+    ui.set_status(("DIRIGERA\n" + dip + "\nLoading devices...").c_str());
+    flush_ui(100);
 
-    // ── Light config ─────────────────────────────────────────────────────
-    if (!lc_has_config()) {
-        run_light_config_server();
-        // never returns (reboots)
-    }
-
-    std::vector<LightCfg> light_cfgs;
-    lc_load(light_cfgs);
-
-    hk.init(light_cfgs);
-    hk.on_ready([&]() { ui.build_home(); });
-    hk.on_update([&](const HAEntity& e) {
+    dc.on_ready([&]() { ui.build_home(); });
+    dc.on_update([&](const HAEntity& e) {
         g_pending_entity = e;
         g_update_pending = true;
     });
-
-    // ── HomeSpan setup ───────────────────────────────────────────────────
-    homeSpan.setPairingCode(HK_PAIRING_CODE);
-    homeSpan.setQRID(HK_SETUP_ID);
-    homeSpan.setHostNameSuffix("");
-    homeSpan.setLogLevel(0);  // quiet Serial
-    homeSpan.begin(Category::Bridges, "Home Controller", "HC");
-
-    // Bridge accessory (required by HAP spec)
-    new SpanAccessory();
-    new Service::AccessoryInformation();
-    new Characteristic::Identify();
-    new Characteristic::Name("Home Controller");
-    new Characteristic::Manufacturer("DIY");
-    new Characteristic::Model("T-Display-S3-Pro");
-    new Characteristic::SerialNumber("HC001");
-    new Characteristic::FirmwareRevision("2.0");
-
-    // One accessory per configured light
-    for (const auto& cfg : light_cfgs) {
-        new SpanAccessory();
-        new Service::AccessoryInformation();
-        new Characteristic::Identify();
-        new Characteristic::Name(cfg.name.c_str());
-        new Characteristic::Manufacturer("DIY");
-        new Characteristic::Model("Smart Light");
-        new Characteristic::SerialNumber(cfg.id.c_str());
-        new Characteristic::FirmwareRevision("1.0");
-
-        DEV_Light* dev = new DEV_Light(cfg, &hk);
-        hk.register_dev(dev);
-    }
-
-    // Show pairing code briefly, then build home screen
-    ui.set_status("Apple Home\nPairing code:\n" HK_DISPLAY_CODE
-                  "\n\nOpen Apple Home\n+ Add Accessory");
-    flush_ui(4000);
-
-    hk.fire_ready();  // triggers ui.build_home()
+    dc.begin(dip, dtok);
 }
 
 void loop() {
-    homeSpan.poll();
+    dc.loop();
     lv_timer_handler();
+
+    // Home button → close detail / go to home screen
+    if (g_home_pressed) {
+        g_home_pressed = false;
+        ui.go_home();
+    }
+
     if (g_update_pending) {
         g_update_pending = false;
         ui.on_entity_update(g_pending_entity);
