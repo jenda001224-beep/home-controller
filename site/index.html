@@ -242,7 +242,8 @@ btn.addEventListener('click', async () => {
 
     const loader = new ESPLoader({ transport, baudrate: 921600, terminal });
     // "no_reset": board must already be in bootloader mode (hold BOOT → tap RST → release BOOT)
-    await loader.connect('no_reset');
+    // main() = connect + postConnect + runStub (required before writeFlash)
+    await loader.main('no_reset');
 
     log('Connected! Fetching firmware...');
     setProgress(12, 'Downloading firmware...');
