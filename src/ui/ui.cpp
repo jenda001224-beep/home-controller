@@ -144,6 +144,13 @@ void UI::_build_tabs() {
     lv_obj_set_style_bg_color(_tabview, C_BG, 0);
     lv_obj_set_style_bg_color(_tabview, C_BG, LV_PART_MAIN);
 
+    // Zero out the tabview's inner content panel padding so grids fill edge-to-edge
+    lv_obj_t* tv_content = lv_obj_get_child(_tabview, 1);
+    if (tv_content) {
+        lv_obj_set_style_pad_all(tv_content, 0, 0);
+        lv_obj_set_style_pad_gap(tv_content, 0, 0);
+    }
+
     lv_obj_t* tab_bar = lv_tabview_get_tab_btns(_tabview);
     lv_obj_set_style_bg_color(tab_bar, C_BG, 0);
     lv_obj_set_style_text_color(tab_bar, C_TEXT2, 0);
@@ -168,13 +175,13 @@ void UI::_build_tabs() {
     auto make_grid = [&](lv_obj_t* tab) -> lv_obj_t* {
         prep_tab(tab);
         lv_obj_t* g = lv_obj_create(tab);
-        // Width = full tab; height grows with content (enables scrolling in the tab)
-        lv_obj_set_width(g, TFT_WIDTH);
-        lv_obj_set_height(g, LV_SIZE_CONTENT);
+        // 100% of the tab content width; height grows with content (tab itself scrolls)
+        lv_obj_set_size(g, lv_pct(100), LV_SIZE_CONTENT);
         lv_obj_set_style_bg_color(g, C_BG, 0);
         lv_obj_set_style_border_width(g, 0, 0);
         lv_obj_set_layout(g, LV_LAYOUT_FLEX);
         lv_obj_set_flex_flow(g, LV_FLEX_FLOW_ROW_WRAP);
+        // START alignment so tiles anchor to left edge; centering via padding_all
         lv_obj_set_flex_align(g, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_set_style_pad_row(g,    10, 0);
         lv_obj_set_style_pad_column(g, 10, 0);

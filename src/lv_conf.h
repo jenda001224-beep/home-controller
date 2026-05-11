@@ -7,7 +7,7 @@
 
 /*==================== COLOR ====================*/
 #define LV_COLOR_DEPTH     16
-#define LV_COLOR_16_SWAP   1   // LovyanGFX SPI order is BGR; swap bytes so orange stays orange
+#define LV_COLOR_16_SWAP   0   // byte swap NOT needed; rgb_order=true in display.cpp handles channel swap
 #define LV_COLOR_SCREEN_TRANSP 0
 #define LV_COLOR_MIX_ROUND_OFS 0
 

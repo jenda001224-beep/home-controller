@@ -40,7 +40,7 @@ public:
             cfg.offset_rotation  = 0;
             cfg.readable         = false;
             cfg.invert           = false;
-            cfg.rgb_order        = false;
+            cfg.rgb_order        = true;    // ST7796 default is BGR; flip to RGB so LVGL colors are correct
             cfg.dlen_16bit       = false;
             cfg.bus_shared       = true;
             _panel.config(cfg);
