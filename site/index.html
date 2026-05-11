@@ -245,6 +245,11 @@ btn.addEventListener('click', async () => {
     // main() = connect + postConnect + runStub (required before writeFlash)
     await loader.main('no_reset');
 
+    // Disable watchdog for ESP32-S3 native USB (WDT would reset chip mid-flash ~15s)
+    if (loader.chip && typeof loader.chip.disableWatchdogs === 'function') {
+      try { await loader.chip.disableWatchdogs(loader); } catch (_) {}
+    }
+
     log('Connected! Fetching firmware...');
     setProgress(12, 'Downloading firmware...');
 
