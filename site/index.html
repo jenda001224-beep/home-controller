@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Home Controller — Flash</title>
-  <script type="module" src="https://unpkg.com/esp-web-tools@9.4.3/dist/web/install-button.js?module"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -33,12 +32,7 @@
     .hero h1 { font-size: 26px; font-weight: 700; letter-spacing: -.4px; }
     .hero p  { color: #8e8e93; font-size: 15px; margin-top: 6px; line-height: 1.5; }
 
-    esp-web-install-button {
-      display: block;
-      width: 100%;
-    }
-
-    esp-web-install-button::part(button) {
+    #btn-flash {
       display: block;
       width: 100%;
       background: #ff9500;
@@ -49,30 +43,49 @@
       font-weight: 600;
       padding: 16px;
       cursor: pointer;
+      transition: opacity .15s, transform .1s;
       letter-spacing: -.2px;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
     }
+    #btn-flash:hover:not(:disabled) { opacity: .88; }
+    #btn-flash:active:not(:disabled) { transform: scale(.98); }
+    #btn-flash:disabled { opacity: .35; cursor: not-allowed; }
 
-    esp-web-install-button::part(button):hover {
-      opacity: .88;
+    .progress-wrap { margin-top: 20px; display: none; }
+    .progress-wrap.visible { display: block; }
+    .bar-bg { background: #3a3a3c; border-radius: 8px; height: 8px; overflow: hidden; }
+    .bar-fill {
+      height: 100%;
+      background: #ff9500;
+      border-radius: 8px;
+      width: 0%;
+      transition: width .2s;
     }
+    .progress-label { font-size: 13px; color: #8e8e93; margin-top: 8px; text-align: center; }
 
-    .unsupported-message {
-      background: #3a2a00;
-      border: 1px solid #ff9500;
-      border-radius: 12px;
-      padding: 14px 16px;
-      font-size: 14px;
-      color: #ff9500;
-      margin-bottom: 20px;
-      text-align: center;
+    #log {
+      margin-top: 20px;
+      background: #1c1c1e;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 12px;
+      color: #30d158;
+      max-height: 160px;
+      overflow-y: auto;
+      display: none;
+      border: 1px solid #38383a;
     }
+    #log.visible { display: block; }
+    #log .err { color: #ff453a; }
+    #log .dim { color: #636366; }
 
-    .steps {
-      margin-top: 28px;
-      border-top: 1px solid #38383a;
-      padding-top: 24px;
-    }
+    .result { display: none; text-align: center; padding: 20px 0 4px; }
+    .result.visible { display: block; }
+    .result .result-icon { font-size: 40px; margin-bottom: 8px; }
+    .result h2 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .result p  { color: #8e8e93; font-size: 14px; line-height: 1.5; }
+
+    .steps { margin-top: 28px; border-top: 1px solid #38383a; padding-top: 24px; }
     .steps h3 {
       font-size: 12px;
       font-weight: 600;
@@ -81,47 +94,37 @@
       color: #8e8e93;
       margin-bottom: 14px;
     }
-    .step {
-      display: flex;
-      gap: 12px;
-      align-items: flex-start;
-      margin-bottom: 12px;
-    }
+    .step { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
     .step-num {
       background: #3a3a3c;
       border-radius: 50%;
-      width: 24px;
-      height: 24px;
-      min-width: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      font-weight: 700;
-      color: #ff9500;
+      width: 24px; height: 24px; min-width: 24px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: #ff9500;
     }
     .step-text { font-size: 14px; color: #ebebf5cc; line-height: 1.5; }
     .step-text b { color: #fff; }
     .step-text code {
-      background: #3a3a3c;
-      border-radius: 5px;
-      padding: 1px 6px;
-      font-family: "SF Mono", monospace;
-      font-size: 12px;
-      color: #ff9500;
+      background: #3a3a3c; border-radius: 5px; padding: 1px 6px;
+      font-family: "SF Mono", monospace; font-size: 12px; color: #ff9500;
     }
 
-    .footnote {
-      margin-top: 20px;
-      text-align: center;
-      font-size: 12px;
-      color: #48484a;
-    }
+    .footnote { margin-top: 20px; text-align: center; font-size: 12px; color: #48484a; }
     .footnote a { color: #0a84ff; text-decoration: none; }
+
+    .chrome-warning {
+      background: #3a2a00; border: 1px solid #ff9500; border-radius: 12px;
+      padding: 14px 16px; font-size: 14px; color: #ff9500;
+      margin-bottom: 20px; display: none; text-align: center;
+    }
   </style>
 </head>
 <body>
 <div class="card">
+
+  <div class="chrome-warning" id="chrome-warning">
+    ⚠️ Web Serial requires <b>Chrome</b> or <b>Edge</b> on desktop. Safari and Firefox are not supported.
+  </div>
 
   <div class="hero">
     <div class="icon">🏠</div>
@@ -130,42 +133,44 @@
        Plug in your board, then click Install.</p>
   </div>
 
-  <esp-web-install-button manifest="manifest.json">
-    <span slot="unsupported">
-      <div class="unsupported-message">
-        ⚠️ Web Serial requires <b>Chrome</b> or <b>Edge</b> on desktop.<br>
-        Safari and Firefox are not supported.
-      </div>
-    </span>
-  </esp-web-install-button>
+  <button id="btn-flash">⚡ Install Firmware</button>
+
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="bar-bg"><div class="bar-fill" id="bar-fill"></div></div>
+    <div class="progress-label" id="progress-label">Connecting...</div>
+  </div>
+
+  <div id="log"></div>
+
+  <div class="result" id="result-ok">
+    <div class="result-icon">✅</div>
+    <h2>Firmware installed!</h2>
+    <p>The device is rebooting. Follow the steps below to finish setup.</p>
+  </div>
+
+  <div class="result" id="result-err">
+    <div class="result-icon">❌</div>
+    <h2>Flash failed</h2>
+    <p id="err-msg">Check the log above.</p>
+  </div>
 
   <div class="steps">
     <h3>After flashing</h3>
     <div class="step">
       <div class="step-num">1</div>
-      <div class="step-text">
-        Your display shows <b>"HomeController-Setup"</b>
-      </div>
+      <div class="step-text">Your display shows <b>"HomeController-Setup"</b></div>
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div class="step-text">
-        Connect your phone to the <code>HomeController-Setup</code> WiFi network
-      </div>
+      <div class="step-text">Connect your phone to the <code>HomeController-Setup</code> WiFi network</div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div class="step-text">
-        A setup page opens. Enter your <b>WiFi name &amp; password</b> and your
-        <b>Home Assistant IP + Long-Lived Token</b>
-      </div>
+      <div class="step-text">A setup page opens. Enter your <b>WiFi name &amp; password</b> and your <b>Home Assistant IP + Long-Lived Token</b></div>
     </div>
     <div class="step">
       <div class="step-num">4</div>
-      <div class="step-text">
-        Save → device reboots → your rooms appear. Tap to toggle,
-        long-press for brightness &amp; colour.
-      </div>
+      <div class="step-text">Save → device reboots → your rooms appear. Tap to toggle, long-press for brightness &amp; colour.</div>
     </div>
   </div>
 
@@ -174,5 +179,132 @@
     <a href="https://github.com/Xinyuan-LilyGO/T-Display-S3-Pro" target="_blank">Board pinout</a>
   </p>
 </div>
+
+<script type="module">
+import { ESPLoader, Transport, HardReset } from 'https://unpkg.com/esptool-js@0.6.0/bundle.js';
+
+const PARTS = [
+  { url: 'bootloader.bin', address: 0x0000  },
+  { url: 'partitions.bin', address: 0x8000  },
+  { url: 'boot_app0.bin',  address: 0xe000  },
+  { url: 'firmware.bin',   address: 0x10000 },
+];
+
+if (!('serial' in navigator)) {
+  document.getElementById('chrome-warning').style.display = 'block';
+  document.getElementById('btn-flash').disabled = true;
+}
+
+const btn          = document.getElementById('btn-flash');
+const progressW    = document.getElementById('progress-wrap');
+const barFill      = document.getElementById('bar-fill');
+const progressLbl  = document.getElementById('progress-label');
+const logEl        = document.getElementById('log');
+const resultOk     = document.getElementById('result-ok');
+const resultErr    = document.getElementById('result-err');
+const errMsg       = document.getElementById('err-msg');
+
+function log(msg, cls = '') {
+  logEl.classList.add('visible');
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setProgress(pct, label) {
+  progressW.classList.add('visible');
+  barFill.style.width = pct + '%';
+  progressLbl.textContent = label;
+}
+
+btn.addEventListener('click', async () => {
+  btn.disabled = true;
+  resultOk.classList.remove('visible');
+  resultErr.classList.remove('visible');
+  logEl.innerHTML = '';
+
+  let transport;
+
+  try {
+    const port = await navigator.serial.requestPort();
+    transport = new Transport(port);
+
+    const terminal = {
+      clean()          {},
+      writeLine(data)  { log(data, 'dim'); },
+      write(data)      {},
+    };
+
+    log('Connecting to ESP32-S3...', 'dim');
+    setProgress(5, 'Connecting...');
+
+    const loader = new ESPLoader({ transport, baudrate: 921600, terminal });
+    await loader.connect();
+
+    log('Connected! Fetching firmware...');
+    setProgress(12, 'Downloading firmware...');
+
+    const fileArray = [];
+    for (let i = 0; i < PARTS.length; i++) {
+      const p = PARTS[i];
+      const resp = await fetch(p.url);
+      if (!resp.ok) throw new Error(`Could not fetch ${p.url} (${resp.status})`);
+      const buf  = await resp.arrayBuffer();
+      const u8   = new Uint8Array(buf);
+      let   str  = '';
+      for (let j = 0; j < u8.length; j++) str += String.fromCharCode(u8[j]);
+      fileArray.push({ data: str, address: p.address });
+      log(`  ${p.url}  (${(u8.length / 1024).toFixed(1)} KB)`, 'dim');
+      setProgress(12 + ((i + 1) / PARTS.length) * 8, `Downloading ${i + 1}/${PARTS.length}...`);
+    }
+
+    log('Erasing & writing flash...');
+    let lastFile = -1;
+
+    await loader.writeFlash({
+      fileArray,
+      flashSize: 'keep',
+      flashMode: 'dio',
+      flashFreq: '80m',
+      eraseAll:  false,
+      compress:  true,
+      reportProgress(fileIndex, written, total) {
+        if (fileIndex !== lastFile) {
+          lastFile = fileIndex;
+          log(`Part ${fileIndex + 1}/${fileArray.length}  (@ 0x${PARTS[fileIndex].address.toString(16)})`);
+        }
+        const filePct = written / total;
+        const overall = 20 + ((fileIndex + filePct) / fileArray.length) * 78;
+        setProgress(Math.round(overall),
+          `Part ${fileIndex + 1}/${fileArray.length} — ${Math.round(filePct * 100)}%`);
+      },
+    });
+
+    setProgress(100, 'Done!');
+    log('Flash complete — rebooting device.');
+
+    try {
+      const reset = new HardReset(transport, 0);
+      await reset.reset();
+    } catch (_) {}
+
+    resultOk.classList.add('visible');
+
+  } catch (err) {
+    log('Error: ' + err.message, 'err');
+    errMsg.textContent = err.message.includes('bootloader') || err.message.includes('sync')
+      ? 'Board not responding. Hold BOOT, tap RST, release BOOT — then click Install again.'
+      : 'Check the log above. Make sure the board is connected and not already open in another app.';
+    resultErr.classList.add('visible');
+    console.error(err);
+  } finally {
+    try { if (transport) await transport.disconnect(); } catch (_) {}
+    btn.disabled = false;
+    btn.textContent = '⚡ Install Again';
+  }
+});
+</script>
 </body>
 </html>
