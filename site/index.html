@@ -240,7 +240,7 @@ btn.addEventListener('click', async () => {
     log('Connecting to ESP32-S3...', 'dim');
     setProgress(5, 'Connecting...');
 
-    const loader = new ESPLoader({ transport, baudrate: 921600, terminal });
+    const loader = new ESPLoader({ transport, baudrate: 460800, terminal });
     // "no_reset": board must already be in bootloader mode (hold BOOT → tap RST → release BOOT)
     // main() = connect + postConnect + runStub (required before writeFlash)
     await loader.main('no_reset');
