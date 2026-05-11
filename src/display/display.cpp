@@ -71,7 +71,7 @@ public:
             cfg.pin_int         = PIN_TOUCH_INT;
             cfg.bus_shared      = false;
             cfg.offset_rotation = 0;
-            cfg.i2c_host = I2C_NUM_0;
+            cfg.i2c_port = 0;
             cfg.i2c_addr = TOUCH_I2C_ADDR;
             cfg.pin_sda  = PIN_TOUCH_SDA;
             cfg.pin_scl  = PIN_TOUCH_SCL;
@@ -145,4 +145,6 @@ void display_init() {
 
 void display_set_brightness(uint8_t level) {
     lcd.setBrightness(level);
+}
+vel);
 }

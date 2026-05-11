@@ -8,9 +8,9 @@
 // ============================================================
 static const char* entity_icon(const HAEntity& e) {
     switch (e.type) {
-        case EntityType::LIGHT:  return e.is_on() ? LV_SYMBOL_EYE_OPEN : LV_SYMBOL_EYE_CLOSE;
+        case EntityType::LIGHT:  return e.is_on() ? LV_SYMBOL_IMAGE : LV_SYMBOL_TINT;
         case EntityType::SWITCH: return LV_SYMBOL_POWER;
-        case EntityType::FAN:    return LV_SYMBOL_LOOP;
+        case EntityType::FAN:    return LV_SYMBOL_REFRESH;
         default:                 return LV_SYMBOL_SETTINGS;
     }
 }
@@ -423,4 +423,6 @@ void UI::_color_changed(lv_event_t* ev) {
 void UI::_close_detail_cb(lv_event_t* ev) {
     UI* self = (UI*)lv_event_get_user_data(ev);
     self->_close_detail();
+}
+il();
 }
