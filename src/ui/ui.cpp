@@ -2,6 +2,7 @@
 #include "theme.h"
 #include "config.h"
 #include <Arduino.h>
+// Note: HAClient replaced by HKClient — see ui.h
 
 // ============================================================
 //  Helpers
@@ -18,8 +19,8 @@ static const char* entity_icon(const HAEntity& e) {
 // ============================================================
 //  begin / splash
 // ============================================================
-void UI::begin(HAClient* ha) {
-    _ha = ha;
+void UI::begin(HKClient* hk) {
+    _hk = hk;
     show_splash();
 }
 
@@ -98,8 +99,8 @@ void UI::_build_tabs() {
     lv_obj_set_style_border_color(tab_bar, C_ACCENT, LV_PART_ITEMS | LV_STATE_CHECKED);
     lv_obj_set_style_border_width(tab_bar, 2, LV_PART_ITEMS | LV_STATE_CHECKED);
 
-    const auto& areas    = _ha->areas();
-    const auto& entities = _ha->entities();
+    const auto& areas    = _hk->areas();
+    const auto& entities = _hk->entities();
 
     if (areas.empty()) {
         // No areas defined in HA — show all in one tab
@@ -232,7 +233,7 @@ void UI::on_entity_update(const HAEntity& e) {
 //  Detail panel (slide-up sheet)
 // ============================================================
 void UI::_show_detail(const String& entity_id) {
-    const HAEntity* ep = _ha->find_entity(entity_id);
+    const HAEntity* ep = _hk->find_entity(entity_id);
     if (!ep) return;
     const HAEntity& e = *ep;
     _detail_entity_id = entity_id;
@@ -384,7 +385,7 @@ void UI::_tile_clicked(lv_event_t* ev) {
     UI*        self = (UI*)lv_event_get_user_data(ev);
     lv_obj_t*  tile = lv_event_get_target(ev);
     const char* eid = (const char*)lv_obj_get_user_data(tile);
-    if (eid && self->_ha) self->_ha->toggle(String(eid));
+    if (eid && self->_hk) self->_hk->toggle(String(eid));
 }
 
 void UI::_tile_long_press(lv_event_t* ev) {
@@ -398,9 +399,9 @@ void UI::_detail_switch_changed(lv_event_t* ev) {
     UI*       self = (UI*)lv_event_get_user_data(ev);
     lv_obj_t* sw   = lv_event_get_target(ev);
     bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
-    if (self->_ha && !self->_detail_entity_id.isEmpty()) {
-        if (on) self->_ha->turn_on(self->_detail_entity_id);
-        else    self->_ha->turn_off(self->_detail_entity_id);
+    if (self->_hk && !self->_detail_entity_id.isEmpty()) {
+        if (on) self->_hk->turn_on(self->_detail_entity_id);
+        else    self->_hk->turn_off(self->_detail_entity_id);
     }
 }
 
@@ -408,16 +409,16 @@ void UI::_brightness_changed(lv_event_t* ev) {
     UI*       self = (UI*)lv_event_get_user_data(ev);
     lv_obj_t* slider = lv_event_get_target(ev);
     int val = lv_slider_get_value(slider);
-    if (self->_ha && !self->_detail_entity_id.isEmpty())
-        self->_ha->set_brightness(self->_detail_entity_id, (uint8_t)val);
+    if (self->_hk && !self->_detail_entity_id.isEmpty())
+        self->_hk->set_brightness(self->_detail_entity_id, (uint8_t)val);
 }
 
 void UI::_color_changed(lv_event_t* ev) {
     UI*       self = (UI*)lv_event_get_user_data(ev);
     lv_obj_t* cw   = lv_event_get_target(ev);
     lv_color_t c = lv_colorwheel_get_rgb(cw);
-    if (self->_ha && !self->_detail_entity_id.isEmpty())
-        self->_ha->set_color(self->_detail_entity_id, c.ch.red << 3, c.ch.green << 2, c.ch.blue << 3);
+    if (self->_hk && !self->_detail_entity_id.isEmpty())
+        self->_hk->set_color(self->_detail_entity_id, c.ch.red << 3, c.ch.green << 2, c.ch.blue << 3);
 }
 
 void UI::_close_detail_cb(lv_event_t* ev) {

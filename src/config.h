@@ -18,4 +18,9 @@
 #define TOUCH_I2C_ADDR 0x15
 
 #define PIN_RESET_BTN  0
-#define SETUP_AP_NAME "HomeController-Setup"
+#define SETUP_AP_NAME  "HomeController-Setup"
+
+// HomeKit pairing code (8 digits, displayed as XXX-XX-XXX)
+#define HK_PAIRING_CODE "46645544"    // → 466-45-544
+#define HK_SETUP_ID     "HC01"
+#define HK_DISPLAY_CODE "466-45-544"  // formatted for display
