@@ -33,6 +33,9 @@ public:
     // Returns true on success; sets out_token
     static bool pair(const String& hub_ip, String& out_token);
 
+    // Populate with fake data for demo/testing (fires on_ready)
+    void load_demo();
+
 private:
     String _hub_ip;
     String _token;

@@ -29,25 +29,37 @@ void UI::show_splash() {
     lv_obj_set_style_bg_color(_scr_splash, C_BG, 0);
     lv_scr_load(_scr_splash);
 
+    // Large home icon — orange, above the name
+    lv_obj_t* icon = lv_label_create(_scr_splash);
+    lv_label_set_text(icon, LV_SYMBOL_HOME);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(icon, C_ACCENT, 0);   // orange
+    lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(icon, TFT_WIDTH - 40);
+    lv_obj_align(icon, LV_ALIGN_CENTER, 0, -70);
+
+    // App name
     lv_obj_t* title = lv_label_create(_scr_splash);
-    lv_label_set_text(title, LV_SYMBOL_HOME "  " APP_NAME);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_32, 0);
-    lv_obj_set_style_text_color(title, C_TEXT, 0);
+    lv_label_set_text(title, APP_NAME);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(title, C_TEXT2, 0);    // gray, not white
     lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(title, TFT_WIDTH - 40);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, -40);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -30);
 
+    // Status line
     _splash_status = lv_label_create(_scr_splash);
     lv_label_set_text(_splash_status, "Starting...");
     lv_obj_set_style_text_color(_splash_status, C_TEXT2, 0);
     lv_obj_set_style_text_font(_splash_status, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_align(_splash_status, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(_splash_status, TFT_WIDTH - 40);
-    lv_obj_align(_splash_status, LV_ALIGN_CENTER, 0, 16);
+    lv_obj_align(_splash_status, LV_ALIGN_CENTER, 0, 20);
     lv_label_set_long_mode(_splash_status, LV_LABEL_LONG_WRAP);
 
+    // Spinner — orange track, gray background
     lv_obj_t* spin = lv_spinner_create(_scr_splash, 1000, 60);
-    lv_obj_set_size(spin, 40, 40);
+    lv_obj_set_size(spin, 36, 36);
     lv_obj_align(spin, LV_ALIGN_CENTER, 0, 90);
     lv_obj_set_style_arc_color(spin, C_ACCENT, LV_PART_INDICATOR);
     lv_obj_set_style_arc_width(spin, 3, LV_PART_INDICATOR);
@@ -62,6 +74,19 @@ void UI::set_status(const char* msg) {
 // -- Home screen --
 
 void UI::build_home() {
+    // Clean up previous home screen if rebuilding (e.g. demo reload)
+    if (_scr_home) {
+        lv_obj_del(_scr_home);
+        _scr_home  = nullptr;
+        _tabview   = nullptr;
+        _bat_label = nullptr;
+        _detail_panel      = nullptr;
+        _detail_brightness = nullptr;
+        _detail_colorwheel = nullptr;
+        _detail_entity_id  = "";
+        _tiles.clear();
+        _grids.clear();
+    }
     _scr_home = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(_scr_home, C_BG, 0);
     lv_obj_set_style_pad_all(_scr_home, 0, 0);

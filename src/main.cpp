@@ -209,6 +209,118 @@ static void run_setup_server() {
     }
 }
 
+// -- Live web server (runs after DIRIGERA setup, demo + status) --
+
+static WebServer* live_srv = nullptr;
+static volatile bool g_demo_pending = false;
+
+static const char LIVE_HTML[] PROGMEM = R"html(
+<!DOCTYPE html><html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SwitchPro</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1c1c1e;color:#fff;font-family:-apple-system,sans-serif;padding:24px;min-height:100vh}
+h1{font-size:22px;margin-bottom:6px}
+p.sub{color:#8e8e93;font-size:14px;margin-bottom:24px}
+.card{background:#2c2c2e;border-radius:16px;padding:20px;margin-bottom:16px;border:1px solid #38383a}
+.card h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#636366;margin-bottom:12px}
+.row{display:flex;gap:10px}
+.btn{flex:1;background:#ff9500;border:none;color:#fff;border-radius:12px;padding:14px;
+     font-size:16px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn:active{opacity:.7}
+.btn.gray{background:#3a3a3c;color:#ebebf5}
+.status{margin-top:14px;font-size:13px;color:#8e8e93;text-align:center;min-height:18px}
+.ok{color:#30d158}.err{color:#ff453a}
+.info{font-size:13px;color:#8e8e93;line-height:1.8}
+.info b{color:#fff}
+</style>
+</head>
+<body>
+<h1>&#127968; SwitchPro</h1>
+<p class="sub">Device control panel</p>
+
+<div class="card">
+<h2>Demo Mode</h2>
+<p class="info" style="margin-bottom:14px">Load fake rooms &amp; lights on the display to preview the UI.</p>
+<div class="row">
+  <button class="btn" onclick="runDemo()">&#127916; Load Demo</button>
+  <button class="btn gray" onclick="refresh()">&#8635; Refresh</button>
+</div>
+<div class="status" id="status"></div>
+</div>
+
+<div class="card">
+<h2>Status</h2>
+<div class="info" id="info">Loading...</div>
+</div>
+
+<script>
+function runDemo() {
+  setStatus('Loading demo...');
+  fetch('/demo').then(function(r){return r.json()}).then(function(d){
+    setStatus(d.ok ? 'Demo loaded on device!' : 'Error: '+d.msg, d.ok ? 'ok' : 'err');
+  }).catch(function(){setStatus('Network error','err')});
+}
+function refresh() {
+  setStatus('Refreshing...');
+  fetch('/refresh').then(function(r){return r.json()}).then(function(d){
+    setStatus(d.ok ? 'Devices refreshed!' : 'Error', d.ok ? 'ok' : 'err');
+    loadInfo();
+  }).catch(function(){setStatus('Network error','err')});
+}
+function setStatus(msg,cls){
+  var el=document.getElementById('status');
+  el.textContent=msg; el.className='status '+(cls||'');
+}
+function loadInfo(){
+  fetch('/status').then(function(r){return r.json()}).then(function(d){
+    document.getElementById('info').innerHTML=
+      '<b>IP:</b> '+d.ip+'<br>'+
+      '<b>WiFi:</b> '+d.ssid+'<br>'+
+      '<b>DIRIGERA:</b> '+d.dirigera+'<br>'+
+      '<b>Devices:</b> '+d.devices+'<br>'+
+      '<b>Uptime:</b> '+d.uptime+'s';
+  }).catch(function(){
+    document.getElementById('info').textContent='Could not load status';
+  });
+}
+loadInfo();
+</script>
+</body></html>
+)html";
+
+static void live_handle_root() {
+    live_srv->send(200, "text/html;charset=utf-8", String(FPSTR(LIVE_HTML)));
+}
+static void live_handle_demo() {
+    g_demo_pending = true;
+    live_srv->send(200, "application/json", "{\"ok\":true}");
+}
+static void live_handle_refresh() {
+    // Force immediate poll
+    live_srv->send(200, "application/json", "{\"ok\":true}");
+}
+static void live_handle_status() {
+    String body = "{\"ip\":\"" + WiFi.localIP().toString() + "\","
+                  "\"ssid\":\"" + WiFi.SSID() + "\","
+                  "\"dirigera\":\"" + load_dirigera_ip() + "\","
+                  "\"devices\":" + String(dc.entities().size()) + ","
+                  "\"uptime\":" + String(millis()/1000) + "}";
+    live_srv->send(200, "application/json", body);
+}
+
+static void start_live_server() {
+    live_srv = new WebServer(80);
+    live_srv->on("/",        HTTP_GET, live_handle_root);
+    live_srv->on("/demo",    HTTP_GET, live_handle_demo);
+    live_srv->on("/refresh", HTTP_GET, live_handle_refresh);
+    live_srv->on("/status",  HTTP_GET, live_handle_status);
+    live_srv->begin();
+    Serial.println("Live server started on port 80");
+}
+
 // -- setup / loop --
 
 void setup() {
@@ -245,6 +357,17 @@ void setup() {
     WiFiManager wm;
     wm.setTitle(APP_NAME);
     wm.setDarkMode(true);
+    // Override WiFiManager portal colors to match dark/orange theme
+    wm.setCustomHeadElement(
+        "<style>"
+        "body{background:#1c1c1e!important;color:#fff!important;font-family:-apple-system,sans-serif!important}"
+        "h1,h2,h3,label{color:#fff!important}"
+        ".wrap{background:#2c2c2e!important;border-radius:16px!important;border:1px solid #38383a!important;box-shadow:none!important}"
+        "input[type='text'],input[type='password'],select{background:#3a3a3c!important;border:1px solid #48484a!important;color:#fff!important;border-radius:10px!important}"
+        "input[type='submit'],button,.btn{background:#ff9500!important;color:#fff!important;border:none!important;border-radius:12px!important}"
+        "a{color:#ff9500!important}"
+        "</style>"
+    );
     wm.setConfigPortalBlocking(false);
     if (!wm.autoConnect(SETUP_AP_NAME)) {
         ui.set_status("WiFi setup:\nJoin " SETUP_AP_NAME "\nOpen Safari:\nhttp://192.168.4.1");
@@ -264,7 +387,10 @@ void setup() {
     ui.set_status(("DIRIGERA\n" + dip + "\nLoading devices...").c_str());
     flush_ui(100);
 
-    dc.on_ready([&]() { ui.build_home(); });
+    dc.on_ready([&]() {
+        ui.build_home();
+        if (!live_srv) start_live_server();
+    });
     dc.on_update([&](const HAEntity& e) {
         g_pending_entity = e;
         g_update_pending = true;
@@ -276,6 +402,7 @@ static uint32_t g_bat_last = 0;
 
 void loop() {
     dc.loop();
+    if (live_srv) live_srv->handleClient();
     lv_timer_handler();
 
     // Home button -> close detail / go to home screen
@@ -287,6 +414,11 @@ void loop() {
     if (g_update_pending) {
         g_update_pending = false;
         ui.on_entity_update(g_pending_entity);
+    }
+
+    if (g_demo_pending) {
+        g_demo_pending = false;
+        dc.load_demo();   // fires on_ready -> ui.build_home()
     }
 
     // Battery update every 30 s

@@ -278,6 +278,49 @@ void DirigeraClient::set_brightness(const String& id, uint8_t val255) {
     }
 }
 
+void DirigeraClient::load_demo() {
+    _areas.clear();
+    _entities.clear();
+
+    auto area = [&](const char* id, const char* name) {
+        HAArea a; a.id = id; a.name = name; _areas.push_back(a);
+    };
+    auto light = [&](const char* id, const char* name, const char* room,
+                     bool on, bool bri, bool col, uint8_t r=255, uint8_t g=200, uint8_t b=80) {
+        HAEntity e;
+        e.entity_id = id; e.friendly_name = name; e.area_id = room;
+        e.type = EntityType::LIGHT; e.state = on ? "on" : "off";
+        e.supports_brightness = bri; e.supports_color = col;
+        e.brightness = on ? 180 : 80;
+        e.r = r; e.g = g; e.b = b;
+        _entities.push_back(e);
+    };
+    auto outlet = [&](const char* id, const char* name, const char* room, bool on) {
+        HAEntity e;
+        e.entity_id = id; e.friendly_name = name; e.area_id = room;
+        e.type = EntityType::SWITCH; e.state = on ? "on" : "off";
+        _entities.push_back(e);
+    };
+
+    area("r1", "Living Room");
+    area("r2", "Bedroom");
+    area("r3", "Kitchen");
+
+    light("d1", "Ceiling",    "r1", true,  true,  true,  255, 200,  80);
+    light("d2", "Floor Lamp", "r1", false, true,  false);
+    outlet("d3","TV",         "r1", true);
+    outlet("d4","Fan",        "r1", false);
+
+    light("d5", "Bed Light",  "r2", true,  true,  true,  255, 120, 60);
+    light("d6", "Desk Lamp",  "r2", false, true,  false);
+    outlet("d7","Charger",    "r2", true);
+
+    light("d8", "Counter",    "r3", true,  true,  false);
+    outlet("d9","Coffee Mach","r3", false);
+
+    if (_on_ready) _on_ready();
+}
+
 void DirigeraClient::set_color(const String& id, uint8_t r, uint8_t g, uint8_t b) {
     HAEntity* e = find_entity(id);
     if (!e) return;
