@@ -19,6 +19,10 @@ static volatile bool g_update_pending = false;
 static HAEntity      g_pending_entity;
 static volatile bool g_demo_pending   = false;
 
+// Sleep is only allowed after the home screen has been successfully built.
+// This prevents the startup/pairing screen from triggering deep sleep.
+static bool g_sleep_enabled = false;
+
 static Preferences prefs;
 
 // -- Settings (persisted in NVS "hc_cfg") --
@@ -76,13 +80,21 @@ static bool is_charging() {
 // -- Deep sleep --
 
 static void go_to_sleep() {
-    Serial.println("Deep sleep...");
+    Serial.println("Light sleep...");
     display_set_brightness(0);
     flush_ui(50);
+
     uint64_t mask = (1ULL << PIN_BOOT_BTN) | (1ULL << PIN_BTN1) |
                     (1ULL << PIN_BTN2)      | (1ULL << PIN_TOUCH_INT);
     esp_sleep_enable_ext1_wakeup(mask, ESP_EXT1_WAKEUP_ANY_LOW);
-    esp_deep_sleep_start();
+
+    // Light sleep: CPU and RAM are preserved. Execution resumes here on wake.
+    esp_light_sleep_start();
+
+    // --- woke up ---
+    g_last_activity = millis();
+    display_set_brightness(cfg_brightness);
+    Serial.println("Wake from light sleep");
 }
 
 // -- DIRIGERA config storage --
@@ -423,7 +435,11 @@ void setup() {
     ui.set_status(("DIRIGERA\n" + dip + "\nLoading devices...").c_str());
     flush_ui(100);
 
-    dc.on_ready([&]() { ui.build_home(); });
+    dc.on_ready([&]() {
+        ui.build_home();
+        g_sleep_enabled = true;
+        g_last_activity = millis();
+    });
     dc.on_update([&](const HAEntity& e) { g_pending_entity = e; g_update_pending = true; });
     dc.begin(dip, dtok);
 }
@@ -448,7 +464,11 @@ void loop() {
 
     if (g_demo_pending) {
         g_demo_pending = false;
-        dc.on_ready([&]() { ui.build_home(); });
+        dc.on_ready([&]() {
+            ui.build_home();
+            g_sleep_enabled = true;
+            g_last_activity = millis();
+        });
         dc.load_demo();
     }
 
@@ -483,8 +503,8 @@ void loop() {
         g_was_charging = charging;
     }
 
-    // Deep sleep after inactivity
-    if (cfg_sleep_sec > 0 &&
+    // Light sleep after inactivity — only once home screen is showing
+    if (g_sleep_enabled && cfg_sleep_sec > 0 &&
         millis() - g_last_activity > (uint32_t)cfg_sleep_sec * 1000) {
         go_to_sleep();
     }

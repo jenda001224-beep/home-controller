@@ -155,17 +155,30 @@ void UI::_build_tabs() {
     const auto& areas    = _dc->areas();
     const auto& entities = _dc->entities();
 
+    // Helper: zero out the default padding LVGL adds to tab content panels so
+    // our own grid padding is the only spacing and tile widths are predictable.
+    auto prep_tab = [](lv_obj_t* tab) {
+        lv_obj_set_style_pad_all(tab,    0, 0);
+        lv_obj_set_style_pad_gap(tab,    0, 0);
+        lv_obj_set_style_border_width(tab, 0, 0);
+        lv_obj_set_style_bg_color(tab, lv_color_black(), 0);
+        lv_obj_set_style_bg_opa(tab,   0, 0);
+    };
+
     auto make_grid = [&](lv_obj_t* tab) -> lv_obj_t* {
+        prep_tab(tab);
         lv_obj_t* g = lv_obj_create(tab);
-        lv_obj_set_size(g, lv_pct(100), lv_pct(100));
+        // Width = full tab; height grows with content (enables scrolling in the tab)
+        lv_obj_set_width(g, TFT_WIDTH);
+        lv_obj_set_height(g, LV_SIZE_CONTENT);
         lv_obj_set_style_bg_color(g, C_BG, 0);
         lv_obj_set_style_border_width(g, 0, 0);
         lv_obj_set_layout(g, LV_LAYOUT_FLEX);
         lv_obj_set_flex_flow(g, LV_FLEX_FLOW_ROW_WRAP);
         lv_obj_set_flex_align(g, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-        lv_obj_set_style_pad_row(g, 10, 0);
+        lv_obj_set_style_pad_row(g,    10, 0);
         lv_obj_set_style_pad_column(g, 10, 0);
-        lv_obj_set_style_pad_all(g, 12, 0);
+        lv_obj_set_style_pad_all(g,    12, 0);
         return g;
     };
 
@@ -411,9 +424,11 @@ void UI::_color_changed(lv_event_t* ev) {
     UI* self     = (UI*)lv_event_get_user_data(ev);
     lv_obj_t* cw = lv_event_get_target(ev);
     lv_color_t c = lv_colorwheel_get_rgb(cw);
+    // Convert to 32-bit to safely extract R/G/B bytes regardless of LV_COLOR_16_SWAP
+    lv_color32_t c32;
+    c32.full = lv_color_to32(c);
     if (self->_dc && !self->_detail_entity_id.isEmpty())
-        self->_dc->set_color(self->_detail_entity_id,
-                             c.ch.red << 3, c.ch.green << 2, c.ch.blue << 3);
+        self->_dc->set_color(self->_detail_entity_id, c32.ch.red, c32.ch.green, c32.ch.blue);
 }
 
 void UI::_close_detail_cb(lv_event_t* ev) {
