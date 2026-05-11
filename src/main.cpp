@@ -33,13 +33,14 @@ static void flush_ui(int ms = 100) {
     }
 }
 
-// Blink the backlight N times on startup — visual confirmation firmware runs
-static void blink_backlight(int n = 3) {
+// Blink the white LED (GPIO 38) — visual confirmation firmware runs
+static void blink_led(int n = 3) {
+    pinMode(PIN_LED, OUTPUT);
     for (int i = 0; i < n; i++) {
-        display_set_brightness(0);
-        delay(120);
-        display_set_brightness(200);
-        delay(180);
+        digitalWrite(PIN_LED, HIGH);
+        delay(150);
+        digitalWrite(PIN_LED, LOW);
+        delay(150);
     }
 }
 
@@ -289,8 +290,8 @@ void setup() {
     ui.set_status("Starting...");
     flush_ui(200);
 
-    // 3 backlight blinks = firmware is alive
-    blink_backlight(3);
+    // 3 LED blinks = firmware is alive (GPIO 38, white LED)
+    blink_led(3);
 
     // ── Factory reset: hold BOOT button 3 s ──────────────────────────────
     if (digitalRead(PIN_RESET_BTN) == LOW) {

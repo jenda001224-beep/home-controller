@@ -21,7 +21,7 @@ public:
             cfg.spi_mode   = 0;
             cfg.freq_write = 80000000;
             cfg.freq_read  = 20000000;
-            cfg.spi_3wire  = true;
+            cfg.spi_3wire  = false;
             cfg.use_lock   = true;
             cfg.dma_channel = SPI_DMA_CH_AUTO;
             cfg.pin_sclk   = PIN_LCD_SCLK;
@@ -109,13 +109,7 @@ static void lvgl_touch_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
 }
 
 void display_init() {
-    // GPIO 15 = power enable for the T-Display S3 Pro display module.
-    // Without this the screen has no power and stays completely dead.
-    pinMode(15, OUTPUT);
-    digitalWrite(15, HIGH);
-    delay(50);
-
-    // Force backlight ON before LovyanGFX configures its PWM.
+    // Force backlight HIGH before LovyanGFX configures its PWM.
     pinMode(PIN_LCD_BL, OUTPUT);
     digitalWrite(PIN_LCD_BL, HIGH);
 
