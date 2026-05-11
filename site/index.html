@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Home Controller — Flash</title>
+  <title>SwitchPro — Flash</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -13,36 +13,40 @@
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
       min-height: 100vh;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
-      padding: 24px;
+      padding: 32px 16px 64px;
     }
 
+    .page { max-width: 520px; width: 100%; }
+
+    /* Hero */
+    .hero { text-align: center; margin-bottom: 36px; }
+    .hero .icon { font-size: 56px; margin-bottom: 12px; }
+    .hero h1 { font-size: 30px; font-weight: 700; letter-spacing: -.5px; }
+    .hero .sub { color: #8e8e93; font-size: 15px; margin-top: 8px; line-height: 1.5; }
+    .hero .version { font-size: 11px; color: #48484a; margin-top: 4px; }
+
+    /* Sections */
+    .section { margin-bottom: 28px; }
+    .section-title {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .09em; color: #636366; margin-bottom: 12px;
+    }
+
+    /* Flash card */
     .card {
       background: #2c2c2e;
       border-radius: 20px;
-      padding: 40px 36px 36px;
-      max-width: 500px;
-      width: 100%;
+      padding: 28px 24px;
       border: 1px solid #38383a;
     }
 
-    .hero { text-align: center; margin-bottom: 32px; }
-    .hero .icon { font-size: 52px; margin-bottom: 12px; }
-    .hero h1 { font-size: 26px; font-weight: 700; letter-spacing: -.4px; }
-    .hero p  { color: #8e8e93; font-size: 15px; margin-top: 6px; line-height: 1.5; }
-
     #btn-flash {
-      display: block;
-      width: 100%;
-      background: #ff9500;
-      color: #fff;
-      border: none;
-      border-radius: 14px;
-      font-size: 17px;
-      font-weight: 600;
-      padding: 16px;
-      cursor: pointer;
+      display: block; width: 100%;
+      background: #ff9500; color: #fff; border: none;
+      border-radius: 14px; font-size: 17px; font-weight: 600;
+      padding: 16px; cursor: pointer;
       transition: opacity .15s, transform .1s;
       letter-spacing: -.2px;
     }
@@ -50,137 +54,402 @@
     #btn-flash:active:not(:disabled) { transform: scale(.98); }
     #btn-flash:disabled { opacity: .35; cursor: not-allowed; }
 
-    .progress-wrap { margin-top: 20px; display: none; }
+    .progress-wrap { margin-top: 18px; display: none; }
     .progress-wrap.visible { display: block; }
     .bar-bg { background: #3a3a3c; border-radius: 8px; height: 8px; overflow: hidden; }
-    .bar-fill {
-      height: 100%;
-      background: #ff9500;
-      border-radius: 8px;
-      width: 0%;
-      transition: width .2s;
-    }
+    .bar-fill { height: 100%; background: #ff9500; border-radius: 8px; width: 0%; transition: width .2s; }
     .progress-label { font-size: 13px; color: #8e8e93; margin-top: 8px; text-align: center; }
 
     #log {
-      margin-top: 20px;
-      background: #1c1c1e;
-      border-radius: 10px;
-      padding: 12px 14px;
-      font-family: "SF Mono", "Fira Code", monospace;
-      font-size: 12px;
-      color: #30d158;
-      max-height: 160px;
-      overflow-y: auto;
-      display: none;
-      border: 1px solid #38383a;
+      margin-top: 16px; background: #1c1c1e; border-radius: 10px;
+      padding: 12px 14px; font-family: "SF Mono","Fira Code",monospace;
+      font-size: 12px; color: #30d158; max-height: 140px; overflow-y: auto;
+      display: none; border: 1px solid #38383a;
     }
     #log.visible { display: block; }
     #log .err { color: #ff453a; }
     #log .dim { color: #636366; }
 
-    .result { display: none; text-align: center; padding: 20px 0 4px; }
+    .result { display: none; text-align: center; padding: 18px 0 4px; }
     .result.visible { display: block; }
-    .result .result-icon { font-size: 40px; margin-bottom: 8px; }
+    .result .result-icon { font-size: 38px; margin-bottom: 8px; }
     .result h2 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
     .result p  { color: #8e8e93; font-size: 14px; line-height: 1.5; }
-
-    .steps { margin-top: 28px; border-top: 1px solid #38383a; padding-top: 24px; }
-    .steps h3 {
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      color: #8e8e93;
-      margin-bottom: 14px;
-    }
-    .step { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
-    .step-num {
-      background: #3a3a3c;
-      border-radius: 50%;
-      width: 24px; height: 24px; min-width: 24px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; color: #ff9500;
-    }
-    .step-text { font-size: 14px; color: #ebebf5cc; line-height: 1.5; }
-    .step-text b { color: #fff; }
-    .step-text code {
-      background: #3a3a3c; border-radius: 5px; padding: 1px 6px;
-      font-family: "SF Mono", monospace; font-size: 12px; color: #ff9500;
-    }
-
-    .footnote { margin-top: 20px; text-align: center; font-size: 12px; color: #48484a; }
-    .footnote a { color: #0a84ff; text-decoration: none; }
 
     .chrome-warning {
       background: #3a2a00; border: 1px solid #ff9500; border-radius: 12px;
       padding: 14px 16px; font-size: 14px; color: #ff9500;
-      margin-bottom: 20px; display: none; text-align: center;
+      margin-bottom: 16px; display: none; text-align: center;
     }
+
+    /* Steps */
+    .step { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+    .step-num {
+      background: #3a3a3c; border-radius: 50%;
+      width: 26px; height: 26px; min-width: 26px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: #ff9500;
+    }
+    .step-text { font-size: 14px; color: #ebebf5cc; line-height: 1.55; padding-top: 2px; }
+    .step-text b { color: #fff; }
+    .step-text code {
+      background: #3a3a3c; border-radius: 5px; padding: 1px 7px;
+      font-family: "SF Mono",monospace; font-size: 12px; color: #ff9500;
+    }
+
+    /* ── DEMO ── */
+    .demo-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 20px;
+    }
+    .phone {
+      width: 220px; height: 356px;
+      background: #000;
+      border-radius: 32px;
+      border: 6px solid #2c2c2e;
+      box-shadow: 0 0 0 1px #48484a, 0 24px 56px rgba(0,0,0,.7);
+      overflow: hidden;
+      position: relative;
+      flex-shrink: 0;
+    }
+    /* Notch */
+    .phone::before {
+      content: '';
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 60px; height: 10px;
+      background: #000; border-radius: 0 0 10px 10px;
+      z-index: 10;
+    }
+    .app {
+      width: 100%; height: 100%;
+      background: #1c1c1e;
+      display: flex; flex-direction: column;
+      font-family: -apple-system, sans-serif;
+    }
+
+    /* App header */
+    .app-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 12px 6px;
+      flex-shrink: 0;
+    }
+    .app-title { font-size: 13px; font-weight: 700; color: #fff; }
+    .app-bat   { font-size: 9px;  color: #8e8e93; }
+
+    /* App tabs */
+    .app-tabs {
+      display: flex; border-bottom: 1px solid #38383a;
+      padding: 0 8px; flex-shrink: 0;
+    }
+    .app-tab {
+      font-size: 9px; color: #8e8e93; padding: 5px 8px 6px;
+      cursor: pointer; border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: color .15s;
+    }
+    .app-tab.active { color: #ff9500; border-bottom-color: #ff9500; }
+
+    /* Grid */
+    .app-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 6px; padding: 8px; overflow-y: auto; flex: 1;
+    }
+    .app-tile {
+      background: #2c2c2e;
+      border-radius: 10px;
+      padding: 8px;
+      border: 1px solid #38383a;
+      cursor: pointer;
+      user-select: none;
+      transition: background .2s, border-color .2s, transform .1s;
+      display: flex; flex-direction: column; justify-content: space-between;
+      min-height: 68px;
+    }
+    .app-tile.on {
+      background: #3a3a3c;
+      border-color: #ff9500;
+    }
+    .app-tile:active { transform: scale(.96); }
+    .tile-icon { font-size: 14px; margin-bottom: 6px; }
+    .tile-icon.on  { color: #ff9500; }
+    .tile-icon.off { color: #636366; }
+    .tile-name  { font-size: 9px; color: #fff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tile-state { font-size: 8px; color: #8e8e93; margin-top: 2px; }
+
+    /* Detail sheet */
+    .app-detail {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: #2c2c2e; border-radius: 14px 14px 0 0;
+      padding: 10px 14px 14px;
+      transform: translateY(100%);
+      transition: transform .25s cubic-bezier(.4,0,.2,1);
+      z-index: 5;
+    }
+    .app-detail.open { transform: translateY(0); }
+    .detail-handle { width: 28px; height: 3px; background: #48484a; border-radius: 2px; margin: 0 auto 8px; }
+    .detail-name   { font-size: 12px; font-weight: 700; color: #fff; text-align: center; margin-bottom: 10px; }
+    .detail-row    { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .detail-label  { font-size: 9px; color: #8e8e93; }
+    /* Toggle */
+    .toggle {
+      width: 34px; height: 20px; background: #3a3a3c;
+      border-radius: 10px; cursor: pointer; position: relative;
+      transition: background .2s;
+    }
+    .toggle.on { background: #ff9500; }
+    .toggle::after {
+      content: ''; position: absolute; top: 3px; left: 3px;
+      width: 14px; height: 14px; background: #fff; border-radius: 50%;
+      transition: left .2s;
+    }
+    .toggle.on::after { left: 17px; }
+    /* Slider */
+    .demo-slider {
+      width: 100%; height: 14px; background: #3a3a3c; border-radius: 7px;
+      -webkit-appearance: none; appearance: none; outline: none; cursor: pointer;
+    }
+    .demo-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 18px; height: 18px;
+      background: #fff; border-radius: 50%; cursor: pointer;
+    }
+    .demo-slider::-webkit-slider-runnable-track { background: transparent; }
+
+    /* Demo hint */
+    .demo-hint {
+      font-size: 12px; color: #636366; text-align: center; line-height: 1.6;
+    }
+
+    .footnote { margin-top: 24px; text-align: center; font-size: 12px; color: #48484a; }
+    .footnote a { color: #0a84ff; text-decoration: none; }
   </style>
 </head>
 <body>
-<div class="card">
-
-  <div class="chrome-warning" id="chrome-warning">
-    ⚠️ Web Serial requires <b>Chrome</b> or <b>Edge</b> on desktop. Safari and Firefox are not supported.
-  </div>
+<div class="page">
 
   <div class="hero">
     <div class="icon">🏠</div>
-    <h1>Home Controller</h1>
-    <p style="font-size:11px;color:#636366;margin-bottom:2px">v5 · DIRIGERA · dlaždice · detail panel · home button</p>
-    <p>Apple HomeKit controller for LilyGO T-Display S3 Pro.<br>
-       Click <b>Install</b>, then while it says <b>"Connecting…"</b> — hold <b>BOOT</b>, tap <b>RST</b>, release <b>BOOT</b>.</p>
+    <h1>SwitchPro</h1>
+    <p class="sub">Smart home controller for LilyGO T-Display S3 Pro<br>Powered by IKEA DIRIGERA</p>
+    <p class="version">v5 · DIRIGERA · rooms · detail panel · home button · battery</p>
   </div>
 
-  <button id="btn-flash">⚡ Install Firmware</button>
-
-  <div class="progress-wrap" id="progress-wrap">
-    <div class="bar-bg"><div class="bar-fill" id="bar-fill"></div></div>
-    <div class="progress-label" id="progress-label">Connecting...</div>
+  <!-- DEMO -->
+  <div class="section">
+    <div class="section-title">Preview</div>
+    <div class="demo-wrap">
+      <div class="phone">
+        <div class="app" id="app">
+          <div class="app-header">
+            <span class="app-title">🏠 SwitchPro</span>
+            <span class="app-bat" id="demo-bat">🔋 87%</span>
+          </div>
+          <div class="app-tabs" id="demo-tabs">
+            <div class="app-tab active" data-room="0">Living Room</div>
+            <div class="app-tab" data-room="1">Bedroom</div>
+            <div class="app-tab" data-room="2">Kitchen</div>
+          </div>
+          <div class="app-grid" id="demo-grid"></div>
+          <div class="app-detail" id="demo-detail">
+            <div class="detail-handle"></div>
+            <div class="detail-name" id="detail-name">Ceiling Light</div>
+            <div class="detail-row">
+              <span class="detail-label">Power</span>
+              <div class="toggle on" id="detail-toggle"></div>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Brightness</span>
+            </div>
+            <input type="range" class="demo-slider" id="detail-slider" min="1" max="100" value="70">
+          </div>
+        </div>
+      </div>
+      <p class="demo-hint">Tap a tile to open detail panel.<br>Tap outside to dismiss.</p>
+    </div>
   </div>
 
-  <div id="log"></div>
+  <!-- FLASH -->
+  <div class="section">
+    <div class="section-title">Flash firmware</div>
+    <div class="card">
+      <div class="chrome-warning" id="chrome-warning">
+        ⚠️ Web Serial requires <b>Chrome</b> or <b>Edge</b> on desktop. Safari and Firefox are not supported.
+      </div>
 
-  <div class="result" id="result-ok">
-    <div class="result-icon">✅</div>
-    <h2>Firmware installed!</h2>
-    <p>The device is rebooting. Follow the steps below to finish setup.</p>
+      <button id="btn-flash">⚡ Install Firmware</button>
+
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="bar-bg"><div class="bar-fill" id="bar-fill"></div></div>
+        <div class="progress-label" id="progress-label">Connecting...</div>
+      </div>
+
+      <div id="log"></div>
+
+      <div class="result" id="result-ok">
+        <div class="result-icon">✅</div>
+        <h2>Firmware installed!</h2>
+        <p>Device is rebooting. Follow the steps below.</p>
+      </div>
+      <div class="result" id="result-err">
+        <div class="result-icon">❌</div>
+        <h2>Flash failed</h2>
+        <p id="err-msg">Check the log above.</p>
+      </div>
+    </div>
   </div>
 
-  <div class="result" id="result-err">
-    <div class="result-icon">❌</div>
-    <h2>Flash failed</h2>
-    <p id="err-msg">Check the log above.</p>
-  </div>
-
-  <div class="steps">
-    <h3>After flashing</h3>
+  <!-- STEPS -->
+  <div class="section">
+    <div class="section-title">After flashing</div>
     <div class="step">
       <div class="step-num">1</div>
-      <div class="step-text">Your display shows <b>"HomeController-Setup"</b></div>
+      <div class="step-text">
+        Device shows <b>"Connecting to WiFi…"</b> — if it hasn't connected before,
+        a hotspot named <code>SwitchPro-Setup</code> starts automatically.
+      </div>
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div class="step-text">Connect your phone to the <code>HomeController-Setup</code> WiFi network</div>
+      <div class="step-text">
+        On your phone join the <code>SwitchPro-Setup</code> WiFi network.
+        A portal opens — enter your <b>home WiFi name &amp; password</b> and save.
+      </div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div class="step-text">A setup page opens. Enter your <b>WiFi name &amp; password</b> and your <b>Home Assistant IP + Long-Lived Token</b></div>
+      <div class="step-text">
+        Device connects to WiFi and shows its <b>IP address</b> on screen
+        (e.g. <code>http://192.168.1.42</code>). Open that address in Safari.
+      </div>
     </div>
     <div class="step">
       <div class="step-num">4</div>
-      <div class="step-text">Save → device reboots → your rooms appear. Tap to toggle, long-press for brightness &amp; colour.</div>
+      <div class="step-text">
+        Enter your <b>DIRIGERA hub IP</b>, tap <b>Pair</b>, then
+        press the small button on the <b>back</b> of the DIRIGERA hub within 30 s.
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-text">
+        Device reboots and shows your rooms and lights. <b>Tap any tile</b> to open
+        the detail panel — brightness slider &amp; colour wheel for lights.
+        The <b>physical button</b> below the display goes back to the home screen.
+      </div>
+    </div>
+    <div class="step" style="margin-bottom:0">
+      <div class="step-num">↺</div>
+      <div class="step-text">
+        <b>Factory reset:</b> hold the <code>BOOT</code> button for 3 seconds on startup.
+      </div>
     </div>
   </div>
 
   <p class="footnote">
-    Requires Chrome or Edge on desktop &nbsp;·&nbsp;
-    <a href="https://github.com/Xinyuan-LilyGO/T-Display-S3-Pro" target="_blank">Board pinout</a>
+    Requires Chrome or Edge on desktop to flash &nbsp;·&nbsp;
+    <a href="https://github.com/Xinyuan-LilyGO/T-Display-S3-Pro" target="_blank">Board info</a>
   </p>
+
 </div>
 
+<!-- Demo logic -->
+<script>
+(function() {
+  var rooms = [
+    [
+      { name:'Ceiling Light', on:true,  bright:true,  icon:'💡' },
+      { name:'Floor Lamp',    on:false, bright:true,  icon:'🪔' },
+      { name:'TV',            on:true,  bright:false, icon:'📺' },
+      { name:'Fan',           on:false, bright:false, icon:'💨' },
+    ],
+    [
+      { name:'Bed Light',     on:true,  bright:true,  icon:'💡' },
+      { name:'Desk Lamp',     on:false, bright:true,  icon:'🪔' },
+    ],
+    [
+      { name:'Counter Light', on:true,  bright:true,  icon:'💡' },
+      { name:'Outlet',        on:false, bright:false, icon:'🔌' },
+    ],
+  ];
+
+  var currentRoom = 0;
+  var openTile    = null;
+
+  var grid   = document.getElementById('demo-grid');
+  var detail = document.getElementById('demo-detail');
+  var tabs   = document.querySelectorAll('.app-tab');
+
+  function renderGrid(roomIdx) {
+    grid.innerHTML = '';
+    rooms[roomIdx].forEach(function(t, i) {
+      var el = document.createElement('div');
+      el.className = 'app-tile' + (t.on ? ' on' : '');
+      el.innerHTML =
+        '<div class="tile-icon ' + (t.on ? 'on' : 'off') + '">' + t.icon + '</div>' +
+        '<div><div class="tile-name">' + t.name + '</div>' +
+        '<div class="tile-state">' + (t.on ? 'On' : 'Off') + '</div></div>';
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openDetail(roomIdx, i);
+      });
+      grid.appendChild(el);
+    });
+  }
+
+  function openDetail(roomIdx, tileIdx) {
+    var t = rooms[roomIdx][tileIdx];
+    openTile = { r: roomIdx, i: tileIdx };
+    document.getElementById('detail-name').textContent = t.name;
+    var tog = document.getElementById('detail-toggle');
+    tog.className = 'toggle' + (t.on ? ' on' : '');
+    var slider = document.getElementById('detail-slider');
+    slider.style.display = t.bright ? 'block' : 'none';
+    document.querySelector('.detail-row:last-of-type').style.display = t.bright ? 'flex' : 'none';
+    detail.classList.add('open');
+  }
+
+  function closeDetail() {
+    detail.classList.remove('open');
+    openTile = null;
+  }
+
+  document.getElementById('demo-detail').addEventListener('click', function(e) {
+    e.stopPropagation();
+  });
+
+  document.getElementById('app').addEventListener('click', function() {
+    if (openTile) closeDetail();
+  });
+
+  document.getElementById('detail-toggle').addEventListener('click', function() {
+    if (!openTile) return;
+    var t = rooms[openTile.r][openTile.i];
+    t.on = !t.on;
+    this.className = 'toggle' + (t.on ? ' on' : '');
+    renderGrid(currentRoom);
+  });
+
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      closeDetail();
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      currentRoom = parseInt(tab.dataset.room);
+      renderGrid(currentRoom);
+    });
+  });
+
+  renderGrid(0);
+
+  // Battery ticker
+  var bpct = 87;
+  setInterval(function() {
+    bpct = Math.max(5, bpct - 1);
+    var icon = bpct > 80 ? '🔋' : bpct > 30 ? '🪫' : '⚠️';
+    document.getElementById('demo-bat').textContent = icon + ' ' + bpct + '%';
+  }, 8000);
+})();
+</script>
+
+<!-- Flash logic -->
 <script type="module">
 import { ESPLoader, Transport, HardReset } from 'https://unpkg.com/esptool-js@0.6.0/bundle.js';
 
@@ -196,14 +465,14 @@ if (!('serial' in navigator)) {
   document.getElementById('btn-flash').disabled = true;
 }
 
-const btn          = document.getElementById('btn-flash');
-const progressW    = document.getElementById('progress-wrap');
-const barFill      = document.getElementById('bar-fill');
-const progressLbl  = document.getElementById('progress-label');
-const logEl        = document.getElementById('log');
-const resultOk     = document.getElementById('result-ok');
-const resultErr    = document.getElementById('result-err');
-const errMsg       = document.getElementById('err-msg');
+const btn         = document.getElementById('btn-flash');
+const progressW   = document.getElementById('progress-wrap');
+const barFill     = document.getElementById('bar-fill');
+const progressLbl = document.getElementById('progress-label');
+const logEl       = document.getElementById('log');
+const resultOk    = document.getElementById('result-ok');
+const resultErr   = document.getElementById('result-err');
+const errMsg      = document.getElementById('err-msg');
 
 function log(msg, cls = '') {
   logEl.classList.add('visible');
@@ -227,26 +496,20 @@ btn.addEventListener('click', async () => {
   logEl.innerHTML = '';
 
   let transport;
-
   try {
     const port = await navigator.serial.requestPort();
     transport = new Transport(port);
 
     const terminal = {
-      clean()          {},
-      writeLine(data)  { log(data, 'dim'); },
-      write(data)      {},
+      clean() {}, writeLine(d) { log(d, 'dim'); }, write() {},
     };
 
     log('Connecting to ESP32-S3...', 'dim');
     setProgress(5, 'Connecting...');
 
     const loader = new ESPLoader({ transport, baudrate: 460800, terminal });
-    // "no_reset": board must already be in bootloader mode (hold BOOT → tap RST → release BOOT)
-    // main() = connect + postConnect + runStub (required before writeFlash)
     await loader.main('no_reset');
 
-    // Disable watchdog for ESP32-S3 native USB (WDT would reset chip mid-flash ~15s)
     if (loader.chip && typeof loader.chip.disableWatchdogs === 'function') {
       try { await loader.chip.disableWatchdogs(loader); } catch (_) {}
     }
@@ -270,39 +533,29 @@ btn.addEventListener('click', async () => {
     let lastFile = -1;
 
     await loader.writeFlash({
-      fileArray,
-      flashSize: 'keep',
-      flashMode: 'keep',
-      flashFreq: 'keep',
-      eraseAll:  false,
-      compress:  true,
+      fileArray, flashSize: 'keep', flashMode: 'keep',
+      flashFreq: 'keep', eraseAll: false, compress: true,
       reportProgress(fileIndex, written, total) {
         if (fileIndex !== lastFile) {
           lastFile = fileIndex;
           log(`Part ${fileIndex + 1}/${fileArray.length}  (@ 0x${PARTS[fileIndex].address.toString(16)})`);
         }
-        const filePct = written / total;
-        const overall = 20 + ((fileIndex + filePct) / fileArray.length) * 78;
+        const overall = 20 + ((fileIndex + written / total) / fileArray.length) * 78;
         setProgress(Math.round(overall),
-          `Part ${fileIndex + 1}/${fileArray.length} — ${Math.round(filePct * 100)}%`);
+          `Part ${fileIndex + 1}/${fileArray.length} — ${Math.round(written / total * 100)}%`);
       },
     });
 
     setProgress(100, 'Done!');
     log('Flash complete — rebooting device.');
-
-    try {
-      const reset = new HardReset(transport, 0);
-      await reset.reset();
-    } catch (_) {}
-
+    try { await new HardReset(transport, 0).reset(); } catch (_) {}
     resultOk.classList.add('visible');
 
   } catch (err) {
     log('Error: ' + err.message, 'err');
     errMsg.textContent = err.message.includes('bootloader') || err.message.includes('sync')
       ? 'Board not responding. Hold BOOT, tap RST, release BOOT — then click Install again.'
-      : 'Check the log above. Make sure the board is connected and not already open in another app.';
+      : 'Check the log above. Make sure the board is connected and not open in another app.';
     resultErr.classList.add('visible');
     console.error(err);
   } finally {

@@ -11,7 +11,8 @@ public:
     void on_entity_update(const HAEntity& e);
     void show_splash();
     void set_status(const char* msg);
-    void go_home();   // called by home-button handler in main
+    void go_home();
+    void set_battery(int pct);   // 0-100, call from main loop
 
 private:
     DirigeraClient* _dc = nullptr;
@@ -20,6 +21,7 @@ private:
     lv_obj_t* _scr_home    = nullptr;
     lv_obj_t* _splash_status = nullptr;
     lv_obj_t* _tabview     = nullptr;
+    lv_obj_t* _bat_label   = nullptr;   // header battery label
     std::vector<lv_obj_t*> _grids;
 
     // Detail panel

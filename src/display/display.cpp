@@ -3,7 +3,7 @@
 #include <LovyanGFX.hpp>
 #include <lvgl.h>
 #include <Wire.h>
-#include <TouchDrvCSTXXX.hpp>
+#include <touch/TouchDrvCSTXXX.hpp>
 
 // ── LovyanGFX — display only (no touch driver, handled by SensorLib) ────────
 
@@ -86,11 +86,15 @@ static void lvgl_flush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px
 }
 
 static void lvgl_touch_read(lv_indev_drv_t*, lv_indev_data_t* data) {
-    int16_t x = 0, y = 0;
-    uint8_t count = touch.getPoint(&x, &y, 1);
-    data->state   = count ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
-    data->point.x = x;
-    data->point.y = y;
+    const TouchPoints& pts = touch.getTouchPoints();
+    if (pts.hasPoints()) {
+        const TouchPoint& p = pts.getPoint(0);
+        data->state   = LV_INDEV_STATE_PR;
+        data->point.x = (lv_coord_t)p.x;
+        data->point.y = (lv_coord_t)p.y;
+    } else {
+        data->state = LV_INDEV_STATE_REL;
+    }
 }
 
 // ── Public init ──────────────────────────────────────────────────────────────

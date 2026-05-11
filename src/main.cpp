@@ -11,7 +11,7 @@
 #include "dirigera/dirigera_client.h"
 #include "ui/ui.h"
 
-// ── Globals ──────────────────────────────────────────────────────────────────
+// -- Globals --
 
 static DirigeraClient dc;
 static UI             ui;
@@ -21,7 +21,7 @@ static HAEntity      g_pending_entity;
 
 static Preferences prefs;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// -- Helpers --
 
 static void flush_ui(int ms = 100) {
     uint32_t t = millis();
@@ -36,7 +36,19 @@ static void blink_led(int n = 3) {
     }
 }
 
-// ── DIRIGERA config storage ──────────────────────────────────────────────────
+// -- Battery --
+
+static int read_battery_pct() {
+    // T-Display S3 Pro: 1:2 voltage divider on PIN_BAT_ADC
+    // LiPo range: 3.0 V (0%) ... 4.2 V (100%)
+    analogSetPinAttenuation(PIN_BAT_ADC, ADC_11db);
+    int   raw = analogRead(PIN_BAT_ADC);
+    float v   = (raw / 4095.0f) * 3.3f * 2.0f;   // actual battery voltage
+    int   pct = (int)((v - 3.0f) / 1.2f * 100.0f);
+    return constrain(pct, 0, 100);
+}
+
+// -- DIRIGERA config storage --
 
 static String load_dirigera_ip()    { prefs.begin("hc_dr",true); String v=prefs.getString("ip","");    prefs.end(); return v; }
 static String load_dirigera_token() { prefs.begin("hc_dr",true); String v=prefs.getString("token",""); prefs.end(); return v; }
@@ -50,13 +62,13 @@ static void clear_dirigera() {
     prefs.begin("hc_dr",false); prefs.clear(); prefs.end();
 }
 
-// ── Setup web server (DIRIGERA pairing) ──────────────────────────────────────
+// -- Setup web server (DIRIGERA pairing) --
 
 static const char SETUP_HTML[] PROGMEM = R"html(
 <!DOCTYPE html><html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Home Controller Setup</title>
+<title>SwitchPro Setup</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#1c1c1e;color:#fff;font-family:-apple-system,sans-serif;padding:24px}
@@ -74,7 +86,7 @@ input{display:block;width:100%;background:#3a3a3c;border:1px solid #48484a;color
 </style>
 </head>
 <body>
-<h1>&#127968; Home Controller</h1>
+<h1>&#127968; SwitchPro</h1>
 <p class="sub">Connect to your IKEA DIRIGERA hub</p>
 
 <div class="card">
@@ -87,13 +99,11 @@ input{display:block;width:100%;background:#3a3a3c;border:1px solid #48484a;color
 1. Enter the IP address of your DIRIGERA hub<br>
 2. Click Pair<br>
 3. Press the action button on the <b>back</b> of DIRIGERA (within 30s)<br>
-4. Done — device reboots and connects
+4. Done — device reboots and shows your rooms
 </div>
 </div>
 
 <script>
-var polling = false;
-
 function startPair() {
   var ip = document.getElementById('ip').value.trim();
   if (!ip) { setStatus('Enter the hub IP address','err'); return; }
@@ -142,7 +152,6 @@ function setStatus(msg,cls) {
 
 static WebServer* cfg_srv = nullptr;
 
-// Pairing state machine
 enum class PairState { IDLE, WAITING, DONE, FAILED };
 static PairState  pair_state = PairState::IDLE;
 static String     pair_ip;
@@ -164,7 +173,7 @@ static void handle_pair_start() {
 
 static void run_setup_server() {
     String ip_str = WiFi.localIP().toString();
-    ui.set_status(("Configure:\nhttp://" + ip_str).c_str());
+    ui.set_status(("Setup:\nhttp://" + ip_str).c_str());
     flush_ui(200);
 
     cfg_srv = new WebServer(80);
@@ -178,9 +187,9 @@ static void run_setup_server() {
         lv_timer_handler();
 
         if (pair_state == PairState::WAITING) {
-            ui.set_status(("Configure:\nhttp://" + ip_str + "\n\nPress button on\nDIRIGERA hub!").c_str());
+            ui.set_status(("Setup:\nhttp://" + ip_str + "\n\nPress button on\nDIRIGERA hub!").c_str());
             flush_ui(50);
-            pair_state = PairState::IDLE;  // prevent re-entry
+            pair_state = PairState::IDLE;
 
             String token;
             bool ok = DirigeraClient::pair(pair_ip, token);
@@ -192,7 +201,7 @@ static void run_setup_server() {
                 ESP.restart();
             } else {
                 pair_state = PairState::FAILED;
-                ui.set_status(("Configure:\nhttp://" + ip_str + "\n\nPairing failed.\nTry again.").c_str());
+                ui.set_status(("Setup:\nhttp://" + ip_str + "\n\nPairing failed.\nTry again.").c_str());
                 flush_ui(50);
             }
         }
@@ -200,7 +209,7 @@ static void run_setup_server() {
     }
 }
 
-// ── setup / loop ─────────────────────────────────────────────────────────────
+// -- setup / loop --
 
 void setup() {
     Serial.begin(115200);
@@ -234,7 +243,7 @@ void setup() {
     ui.set_status("Connecting to WiFi...");
     flush_ui(50);
     WiFiManager wm;
-    wm.setTitle("Home Controller");
+    wm.setTitle(APP_NAME);
     wm.setDarkMode(true);
     wm.setConfigPortalBlocking(false);
     if (!wm.autoConnect(SETUP_AP_NAME)) {
@@ -263,11 +272,13 @@ void setup() {
     dc.begin(dip, dtok);
 }
 
+static uint32_t g_bat_last = 0;
+
 void loop() {
     dc.loop();
     lv_timer_handler();
 
-    // Home button → close detail / go to home screen
+    // Home button -> close detail / go to home screen
     if (g_home_pressed) {
         g_home_pressed = false;
         ui.go_home();
@@ -277,5 +288,12 @@ void loop() {
         g_update_pending = false;
         ui.on_entity_update(g_pending_entity);
     }
+
+    // Battery update every 30 s
+    if (millis() - g_bat_last > 30000) {
+        g_bat_last = millis();
+        ui.set_battery(read_battery_pct());
+    }
+
     delay(5);
 }

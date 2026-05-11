@@ -9,7 +9,15 @@ static const char* entity_icon(const HAEntity& e) {
     return LV_SYMBOL_SETTINGS;
 }
 
-// ── begin / splash ──────────────────────────────────────────────────────────
+static const char* bat_icon(int pct) {
+    if (pct > 80) return LV_SYMBOL_BATTERY_FULL;
+    if (pct > 55) return LV_SYMBOL_BATTERY_3;
+    if (pct > 30) return LV_SYMBOL_BATTERY_2;
+    if (pct > 10) return LV_SYMBOL_BATTERY_1;
+    return LV_SYMBOL_BATTERY_EMPTY;
+}
+
+// -- begin / splash --
 
 void UI::begin(DirigeraClient* dc) {
     _dc = dc;
@@ -22,22 +30,25 @@ void UI::show_splash() {
     lv_scr_load(_scr_splash);
 
     lv_obj_t* title = lv_label_create(_scr_splash);
-    lv_label_set_text(title, LV_SYMBOL_HOME "  Home");
+    lv_label_set_text(title, LV_SYMBOL_HOME "  " APP_NAME);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_32, 0);
     lv_obj_set_style_text_color(title, C_TEXT, 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, -30);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(title, TFT_WIDTH - 40);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -40);
 
     _splash_status = lv_label_create(_scr_splash);
-    lv_label_set_text(_splash_status, "Connecting...");
+    lv_label_set_text(_splash_status, "Starting...");
     lv_obj_set_style_text_color(_splash_status, C_TEXT2, 0);
     lv_obj_set_style_text_font(_splash_status, &lv_font_montserrat_14, 0);
-    lv_obj_align(_splash_status, LV_ALIGN_CENTER, 0, 20);
-    lv_label_set_long_mode(_splash_status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(_splash_status, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(_splash_status, TFT_WIDTH - 40);
+    lv_obj_align(_splash_status, LV_ALIGN_CENTER, 0, 16);
+    lv_label_set_long_mode(_splash_status, LV_LABEL_LONG_WRAP);
 
     lv_obj_t* spin = lv_spinner_create(_scr_splash, 1000, 60);
     lv_obj_set_size(spin, 40, 40);
-    lv_obj_align(spin, LV_ALIGN_CENTER, 0, 80);
+    lv_obj_align(spin, LV_ALIGN_CENTER, 0, 90);
     lv_obj_set_style_arc_color(spin, C_ACCENT, LV_PART_INDICATOR);
     lv_obj_set_style_arc_width(spin, 3, LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(spin, C_BG3, LV_PART_MAIN);
@@ -48,7 +59,7 @@ void UI::set_status(const char* msg) {
     if (_splash_status) lv_label_set_text(_splash_status, msg);
 }
 
-// ── Home screen ─────────────────────────────────────────────────────────────
+// -- Home screen --
 
 void UI::build_home() {
     _scr_home = lv_obj_create(nullptr);
@@ -64,7 +75,15 @@ void UI::go_home() {
     if (_scr_home) lv_scr_load_anim(_scr_home, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);
 }
 
+void UI::set_battery(int pct) {
+    if (!_bat_label) return;
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
+    lv_label_set_text(_bat_label, buf);
+}
+
 void UI::_build_tabs() {
+    // Header bar
     lv_obj_t* header = lv_obj_create(_scr_home);
     lv_obj_set_size(header, TFT_WIDTH, 48);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
@@ -74,10 +93,17 @@ void UI::_build_tabs() {
     lv_obj_set_style_pad_all(header, 0, 0);
 
     lv_obj_t* title = lv_label_create(header);
-    lv_label_set_text(title, LV_SYMBOL_HOME "  Home");
+    lv_label_set_text(title, LV_SYMBOL_HOME "  " APP_NAME);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_22, 0);
     lv_obj_set_style_text_color(title, C_TEXT, 0);
     lv_obj_align(title, LV_ALIGN_LEFT_MID, 16, 0);
+
+    // Battery indicator
+    _bat_label = lv_label_create(header);
+    lv_label_set_text(_bat_label, LV_SYMBOL_BATTERY_FULL " --");
+    lv_obj_set_style_text_font(_bat_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(_bat_label, C_TEXT2, 0);
+    lv_obj_align(_bat_label, LV_ALIGN_RIGHT_MID, -12, 0);
 
     _tabview = lv_tabview_create(_scr_home, LV_DIR_TOP, 38);
     lv_obj_set_pos(_tabview, 0, 48);
@@ -128,7 +154,7 @@ void UI::_build_tabs() {
     }
 }
 
-// ── Tiles ────────────────────────────────────────────────────────────────────
+// -- Tiles --
 
 void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
     lv_obj_t* tile = lv_obj_create(grid);
@@ -162,7 +188,6 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
     lv_obj_align(state_lbl, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
     lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
-    // Tap = open detail panel (not toggle — toggle is in the detail switch)
     lv_obj_add_event_cb(tile, _tile_clicked, LV_EVENT_SHORT_CLICKED, this);
     lv_obj_set_user_data(tile, (void*)entity.entity_id.c_str());
     lv_obj_set_style_bg_color(tile, C_BG3, LV_STATE_PRESSED);
@@ -195,7 +220,7 @@ void UI::on_entity_update(const HAEntity& e) {
         _detail_update(e);
 }
 
-// ── Detail panel ─────────────────────────────────────────────────────────────
+// -- Detail panel --
 
 void UI::_show_detail(const String& entity_id) {
     const HAEntity* ep = _dc->find_entity(entity_id);
@@ -213,7 +238,6 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_add_flag(backdrop, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(backdrop, _close_detail_cb, LV_EVENT_SHORT_CLICKED, this);
 
-    // Panel height depends on capabilities
     int panel_h = e.supports_color ? 440 : (e.supports_brightness ? 310 : 220);
     _detail_panel = lv_obj_create(_scr_home);
     lv_obj_set_size(_detail_panel, TFT_WIDTH, panel_h);
@@ -262,7 +286,7 @@ void UI::_show_detail(const String& entity_id) {
 
     int next_y = 100;
 
-    // Brightness slider (Apple-style)
+    // Brightness slider (Apple-style pill)
     if (e.supports_brightness) {
         lv_obj_t* br_lbl = lv_label_create(_detail_panel);
         lv_label_set_text(br_lbl, LV_SYMBOL_IMAGE "  Brightness");
@@ -326,7 +350,7 @@ void UI::_detail_update(const HAEntity& e) {
         lv_colorwheel_set_rgb(_detail_colorwheel, lv_color_make(e.r, e.g, e.b));
 }
 
-// ── Event callbacks ──────────────────────────────────────────────────────────
+// -- Event callbacks --
 
 void UI::_tile_clicked(lv_event_t* ev) {
     UI* self        = (UI*)lv_event_get_user_data(ev);
