@@ -146,5 +146,3 @@ void display_init() {
 void display_set_brightness(uint8_t level) {
     lcd.setBrightness(level);
 }
-vel);
-}
