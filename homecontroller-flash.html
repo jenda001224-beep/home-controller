@@ -240,7 +240,7 @@
 </div>
 
 <script type="module">
-import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.4.1/bundle.js';
+import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.2.0/bundle.js';
 
 // Flash addresses for ESP32-S3 / huge_app partition table
 const ADDR_MAP = {
@@ -371,11 +371,19 @@ btn.addEventListener('click', async () => {
     log(`Connected: ${chip}`);
     setProgress(15, `Connected — ${chip}`);
 
+    // esptool-js expects binary strings, not Uint8Array
+    function bufToBinStr(buf) {
+      const bytes = new Uint8Array(buf);
+      let s = '';
+      for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+      return s;
+    }
+
     // Build file array in flash-address order
     const fileArray = Object.entries(ADDR_MAP)
       .sort((a, b) => a[1] - b[1])
       .map(([name, address]) => ({
-        data: new Uint8Array(loaded[name]),
+        data: bufToBinStr(loaded[name]),
         address,
       }));
 
@@ -385,9 +393,9 @@ btn.addEventListener('click', async () => {
     await loader.write_flash({
       fileArray,
       flash_size: 'keep',
-      flashMode:  'dio',
-      flashFreq:  '80m',
-      eraseAll:   false,
+      flash_mode: 'dio',
+      flash_freq: '80m',
+      erase_all:  false,
       compress:   true,
       reportProgress(fileIndex, written, total) {
         if (fileIndex !== lastFile) {
@@ -403,7 +411,7 @@ btn.addEventListener('click', async () => {
 
     setProgress(100, 'Done!');
     log('Flash complete — rebooting…');
-    await loader.after_flash('hard_reset');
+    await loader.after_flash();
     document.getElementById('result-ok').classList.add('visible');
 
   } catch (err) {
