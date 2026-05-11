@@ -165,9 +165,11 @@
 /*==================== THEME ====================*/
 #define LV_USE_THEME_DEFAULT 1
 #if LV_USE_THEME_DEFAULT
-    #define LV_THEME_DEFAULT_DARK            1
-    #define LV_THEME_DEFAULT_GROW            1
-    #define LV_THEME_DEFAULT_TRANSITION_TIME 80
+    #define LV_THEME_DEFAULT_DARK             1
+    #define LV_THEME_DEFAULT_GROW             1
+    #define LV_THEME_DEFAULT_TRANSITION_TIME  80
+    #define LV_THEME_DEFAULT_COLOR_PRIMARY    lv_color_hex(0xFF9500)
+    #define LV_THEME_DEFAULT_COLOR_SECONDARY  lv_color_hex(0x8E8E93)
 #endif
 #define LV_USE_THEME_SIMPLE 0
 #define LV_USE_THEME_MONO   0

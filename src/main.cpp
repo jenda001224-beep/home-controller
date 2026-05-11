@@ -18,6 +18,7 @@ static UI             ui;
 
 static volatile bool g_update_pending = false;
 static HAEntity      g_pending_entity;
+static volatile bool g_demo_pending   = false;
 
 static Preferences prefs;
 
@@ -39,11 +40,9 @@ static void blink_led(int n = 3) {
 // -- Battery --
 
 static int read_battery_pct() {
-    // T-Display S3 Pro: 1:2 voltage divider on PIN_BAT_ADC
-    // LiPo range: 3.0 V (0%) ... 4.2 V (100%)
     analogSetPinAttenuation(PIN_BAT_ADC, ADC_11db);
     int   raw = analogRead(PIN_BAT_ADC);
-    float v   = (raw / 4095.0f) * 3.3f * 2.0f;   // actual battery voltage
+    float v   = (raw / 4095.0f) * 3.3f * 2.0f;
     int   pct = (int)((v - 3.0f) / 1.2f * 100.0f);
     return constrain(pct, 0, 100);
 }
@@ -52,7 +51,7 @@ static int read_battery_pct() {
 
 static String load_dirigera_ip()    { prefs.begin("hc_dr",true); String v=prefs.getString("ip","");    prefs.end(); return v; }
 static String load_dirigera_token() { prefs.begin("hc_dr",true); String v=prefs.getString("token",""); prefs.end(); return v; }
-static void   save_dirigera(const String& ip, const String& token) {
+static void save_dirigera(const String& ip, const String& token) {
     prefs.begin("hc_dr",false);
     prefs.putString("ip",    ip);
     prefs.putString("token", token);
@@ -62,9 +61,21 @@ static void clear_dirigera() {
     prefs.begin("hc_dr",false); prefs.clear(); prefs.end();
 }
 
-// -- Setup web server (DIRIGERA pairing) --
+// =============================================================
+//  Single web server — starts right after WiFi, serves both
+//  the DIRIGERA pairing page and the live demo/status page.
+// =============================================================
 
-static const char SETUP_HTML[] PROGMEM = R"html(
+static WebServer app_srv(80);
+
+// Pairing state machine
+enum class PairState { IDLE, WAITING, DONE, FAILED };
+static PairState pair_state = PairState::IDLE;
+static String    pair_ip;
+
+// ---- HTML pages ----
+
+static const char PAGE_SETUP[] PROGMEM = R"html(
 <!DOCTYPE html><html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -72,181 +83,121 @@ static const char SETUP_HTML[] PROGMEM = R"html(
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#1c1c1e;color:#fff;font-family:-apple-system,sans-serif;padding:24px}
-h1{font-size:22px;margin-bottom:6px}p.sub{color:#8e8e93;font-size:14px;margin-bottom:24px}
-.card{background:#2c2c2e;border-radius:16px;padding:20px;margin-bottom:16px}
-.card h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#8e8e93;margin-bottom:12px}
+h1{font-size:22px;margin-bottom:6px}
+.sub{color:#8e8e93;font-size:14px;margin-bottom:24px}
+.card{background:#2c2c2e;border-radius:16px;padding:20px;margin-bottom:16px;border:1px solid #38383a}
+.card h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#636366;margin-bottom:12px}
 input{display:block;width:100%;background:#3a3a3c;border:1px solid #48484a;color:#fff;
   border-radius:10px;padding:12px 14px;font-size:16px;margin-bottom:12px}
-.btn{display:block;width:100%;background:#ff9500;border:none;color:#fff;border-radius:12px;
-  padding:14px;font-size:17px;font-weight:600;cursor:pointer}
-.btn:disabled{opacity:.4}
-.status{margin-top:14px;font-size:14px;color:#8e8e93;text-align:center;min-height:20px}
+.row{display:flex;gap:10px}
+.btn{flex:1;background:#ff9500;border:none;color:#fff;border-radius:12px;
+  padding:14px;font-size:16px;font-weight:600;cursor:pointer}
+.btn:active{opacity:.7}
+.btn.gray{background:#3a3a3c;color:#ebebf5}
+.status{margin-top:12px;font-size:14px;color:#8e8e93;text-align:center;min-height:20px}
 .ok{color:#30d158}.err{color:#ff453a}
-.steps{margin-top:8px;font-size:13px;color:#636366;line-height:1.8;padding-left:4px}
+.hint{margin-top:8px;font-size:13px;color:#636366;line-height:1.8}
 </style>
 </head>
 <body>
 <h1>&#127968; SwitchPro</h1>
-<p class="sub">Connect to your IKEA DIRIGERA hub</p>
+<p class="sub">Device setup</p>
 
 <div class="card">
 <h2>DIRIGERA Hub</h2>
-<input type="text" id="ip" placeholder="Hub IP address (e.g. 192.168.1.50)"
-       inputmode="decimal">
-<button class="btn" id="btn" onclick="startPair()">Pair with DIRIGERA</button>
-<div class="status" id="status"></div>
-<div class="steps">
-1. Enter the IP address of your DIRIGERA hub<br>
-2. Click Pair<br>
-3. Press the action button on the <b>back</b> of DIRIGERA (within 30s)<br>
-4. Done — device reboots and shows your rooms
+<input type="text" id="ip" placeholder="Hub IP (e.g. 192.168.1.50)" inputmode="decimal">
+<button class="btn" id="pair-btn" onclick="startPair()">Pair with DIRIGERA</button>
+<div class="status" id="pair-status"></div>
+<div class="hint">
+1. Enter DIRIGERA hub IP<br>
+2. Tap Pair<br>
+3. Press the button on the <b>back</b> of DIRIGERA (within 30s)
 </div>
+</div>
+
+<div class="card">
+<h2>Preview</h2>
+<p style="font-size:13px;color:#8e8e93;margin-bottom:12px">See how the UI looks with demo data.</p>
+<div class="row">
+  <button class="btn" onclick="loadDemo()">&#127916; Load Demo</button>
+  <button class="btn gray" onclick="clearDemo()">Clear</button>
+</div>
+<div class="status" id="demo-status"></div>
 </div>
 
 <script>
 function startPair() {
   var ip = document.getElementById('ip').value.trim();
-  if (!ip) { setStatus('Enter the hub IP address','err'); return; }
-  document.getElementById('btn').disabled = true;
-  setStatus('Contacting hub...');
+  if (!ip) { setStatus('pair-status','Enter the hub IP','err'); return; }
+  document.getElementById('pair-btn').disabled = true;
+  setStatus('pair-status','Contacting hub...');
   fetch('/pair_start?ip='+encodeURIComponent(ip))
     .then(function(r){return r.json()})
     .then(function(d){
-      if (d.ok) {
-        setStatus('&#128276; Press the button on the back of DIRIGERA now!');
-        pollStatus();
-      } else {
-        setStatus('Error: '+d.msg,'err');
-        document.getElementById('btn').disabled=false;
-      }
-    }).catch(function(e){
-      setStatus('Network error','err');
-      document.getElementById('btn').disabled=false;
-    });
+      if (d.ok) { setStatus('pair-status','Press the button on the back of DIRIGERA!'); pollPair(); }
+      else { setStatus('pair-status','Error: '+d.msg,'err'); document.getElementById('pair-btn').disabled=false; }
+    }).catch(function(){ setStatus('pair-status','Network error','err'); document.getElementById('pair-btn').disabled=false; });
 }
-
-function pollStatus() {
+function pollPair() {
   setTimeout(function(){
     fetch('/pair_status').then(function(r){return r.json()}).then(function(d){
-      if (d.done) {
-        setStatus('&#10003; Paired! Rebooting...','ok');
-      } else if (d.failed) {
-        setStatus('Timed out — button not pressed in time. Try again.','err');
-        document.getElementById('btn').disabled=false;
-      } else {
-        setStatus(d.msg || 'Waiting for button press...');
-        pollStatus();
-      }
-    }).catch(function(){pollStatus()});
+      if (d.done) { setStatus('pair-status','Paired! Rebooting...','ok'); }
+      else if (d.failed) { setStatus('pair-status','Timed out. Try again.','err'); document.getElementById('pair-btn').disabled=false; }
+      else { setStatus('pair-status','Waiting for button press...'); pollPair(); }
+    }).catch(function(){pollPair()});
   }, 1500);
 }
-
-function setStatus(msg,cls) {
-  var el = document.getElementById('status');
-  el.innerHTML = msg;
-  el.className = 'status '+(cls||'');
+function loadDemo() {
+  setStatus('demo-status','Loading...');
+  fetch('/demo').then(function(r){return r.json()}).then(function(d){
+    setStatus('demo-status', d.ok ? 'Demo loaded on device!' : 'Error', d.ok ? 'ok' : 'err');
+  }).catch(function(){ setStatus('demo-status','Error','err'); });
+}
+function clearDemo() {
+  fetch('/clear_demo');
+  setStatus('demo-status','Cleared');
+}
+function setStatus(id, msg, cls) {
+  var el=document.getElementById(id);
+  el.textContent=msg; el.className='status '+(cls||'');
 }
 </script>
 </body></html>
 )html";
 
-static WebServer* cfg_srv = nullptr;
-
-enum class PairState { IDLE, WAITING, DONE, FAILED };
-static PairState  pair_state = PairState::IDLE;
-static String     pair_ip;
-
-static void handle_root()    { cfg_srv->send(200,"text/html;charset=utf-8", String(FPSTR(SETUP_HTML))); }
-static void handle_pair_status() {
-    String json;
-    if (pair_state == PairState::DONE)   json = "{\"done\":true}";
-    else if (pair_state == PairState::FAILED) json = "{\"failed\":true}";
-    else json = "{\"done\":false,\"failed\":false,\"msg\":\"Waiting...\"}";
-    cfg_srv->send(200,"application/json", json);
-}
-static void handle_pair_start() {
-    if (!cfg_srv->hasArg("ip")) { cfg_srv->send(400,"application/json","{\"ok\":false,\"msg\":\"No IP\"}"); return; }
-    pair_ip    = cfg_srv->arg("ip");
-    pair_state = PairState::WAITING;
-    cfg_srv->send(200,"application/json","{\"ok\":true}");
-}
-
-static void run_setup_server() {
-    String ip_str = WiFi.localIP().toString();
-    ui.set_status(("Setup:\nhttp://" + ip_str).c_str());
-    flush_ui(200);
-
-    cfg_srv = new WebServer(80);
-    cfg_srv->on("/",            HTTP_GET, handle_root);
-    cfg_srv->on("/pair_start",  HTTP_GET, handle_pair_start);
-    cfg_srv->on("/pair_status", HTTP_GET, handle_pair_status);
-    cfg_srv->begin();
-
-    while (true) {
-        cfg_srv->handleClient();
-        lv_timer_handler();
-
-        if (pair_state == PairState::WAITING) {
-            ui.set_status(("Setup:\nhttp://" + ip_str + "\n\nPress button on\nDIRIGERA hub!").c_str());
-            flush_ui(50);
-            pair_state = PairState::IDLE;
-
-            String token;
-            bool ok = DirigeraClient::pair(pair_ip, token);
-            if (ok) {
-                save_dirigera(pair_ip, token);
-                pair_state = PairState::DONE;
-                ui.set_status("Paired!\nRebooting...");
-                flush_ui(2000);
-                ESP.restart();
-            } else {
-                pair_state = PairState::FAILED;
-                ui.set_status(("Setup:\nhttp://" + ip_str + "\n\nPairing failed.\nTry again.").c_str());
-                flush_ui(50);
-            }
-        }
-        delay(5);
-    }
-}
-
-// -- Live web server (runs after DIRIGERA setup, demo + status) --
-
-static WebServer* live_srv = nullptr;
-static volatile bool g_demo_pending = false;
-
-static const char LIVE_HTML[] PROGMEM = R"html(
+static const char PAGE_LIVE[] PROGMEM = R"html(
 <!DOCTYPE html><html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SwitchPro</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#1c1c1e;color:#fff;font-family:-apple-system,sans-serif;padding:24px;min-height:100vh}
+body{background:#1c1c1e;color:#fff;font-family:-apple-system,sans-serif;padding:24px}
 h1{font-size:22px;margin-bottom:6px}
-p.sub{color:#8e8e93;font-size:14px;margin-bottom:24px}
+.sub{color:#8e8e93;font-size:14px;margin-bottom:24px}
 .card{background:#2c2c2e;border-radius:16px;padding:20px;margin-bottom:16px;border:1px solid #38383a}
 .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#636366;margin-bottom:12px}
 .row{display:flex;gap:10px}
-.btn{flex:1;background:#ff9500;border:none;color:#fff;border-radius:12px;padding:14px;
-     font-size:16px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn{flex:1;background:#ff9500;border:none;color:#fff;border-radius:12px;
+  padding:14px;font-size:16px;font-weight:600;cursor:pointer}
 .btn:active{opacity:.7}
 .btn.gray{background:#3a3a3c;color:#ebebf5}
-.status{margin-top:14px;font-size:13px;color:#8e8e93;text-align:center;min-height:18px}
+.status{margin-top:12px;font-size:13px;color:#8e8e93;text-align:center;min-height:18px}
 .ok{color:#30d158}.err{color:#ff453a}
-.info{font-size:13px;color:#8e8e93;line-height:1.8}
+.info{font-size:13px;color:#8e8e93;line-height:1.9}
 .info b{color:#fff}
 </style>
 </head>
 <body>
 <h1>&#127968; SwitchPro</h1>
-<p class="sub">Device control panel</p>
+<p class="sub">Device control</p>
 
 <div class="card">
-<h2>Demo Mode</h2>
-<p class="info" style="margin-bottom:14px">Load fake rooms &amp; lights on the display to preview the UI.</p>
+<h2>Demo</h2>
+<p style="font-size:13px;color:#8e8e93;margin-bottom:12px">Load fake rooms onto the display.</p>
 <div class="row">
   <button class="btn" onclick="runDemo()">&#127916; Load Demo</button>
-  <button class="btn gray" onclick="refresh()">&#8635; Refresh</button>
+  <button class="btn gray" onclick="doRefresh()">&#8635; Refresh</button>
 </div>
 <div class="status" id="status"></div>
 </div>
@@ -257,68 +208,91 @@ p.sub{color:#8e8e93;font-size:14px;margin-bottom:24px}
 </div>
 
 <script>
-function runDemo() {
-  setStatus('Loading demo...');
-  fetch('/demo').then(function(r){return r.json()}).then(function(d){
-    setStatus(d.ok ? 'Demo loaded on device!' : 'Error: '+d.msg, d.ok ? 'ok' : 'err');
-  }).catch(function(){setStatus('Network error','err')});
+function runDemo(){
+  setStatus('Loading...');
+  fetch('/demo').then(r=>r.json()).then(d=>setStatus(d.ok?'Demo loaded!':'Error',d.ok?'ok':'err')).catch(()=>setStatus('Error','err'));
 }
-function refresh() {
+function doRefresh(){
   setStatus('Refreshing...');
-  fetch('/refresh').then(function(r){return r.json()}).then(function(d){
-    setStatus(d.ok ? 'Devices refreshed!' : 'Error', d.ok ? 'ok' : 'err');
-    loadInfo();
-  }).catch(function(){setStatus('Network error','err')});
+  fetch('/refresh').then(r=>r.json()).then(d=>{setStatus(d.ok?'Done!':'Error',d.ok?'ok':'err');loadInfo();}).catch(()=>setStatus('Error','err'));
 }
-function setStatus(msg,cls){
-  var el=document.getElementById('status');
-  el.textContent=msg; el.className='status '+(cls||'');
-}
+function setStatus(msg,cls){var el=document.getElementById('status');el.textContent=msg;el.className='status '+(cls||'');}
 function loadInfo(){
-  fetch('/status').then(function(r){return r.json()}).then(function(d){
+  fetch('/status').then(r=>r.json()).then(d=>{
     document.getElementById('info').innerHTML=
-      '<b>IP:</b> '+d.ip+'<br>'+
-      '<b>WiFi:</b> '+d.ssid+'<br>'+
-      '<b>DIRIGERA:</b> '+d.dirigera+'<br>'+
-      '<b>Devices:</b> '+d.devices+'<br>'+
-      '<b>Uptime:</b> '+d.uptime+'s';
-  }).catch(function(){
-    document.getElementById('info').textContent='Could not load status';
-  });
+      '<b>IP:</b> '+d.ip+'<br><b>WiFi:</b> '+d.ssid+'<br><b>DIRIGERA:</b> '+d.dirigera+'<br><b>Devices:</b> '+d.devices+'<br><b>Uptime:</b> '+d.uptime+'s';
+  }).catch(()=>{document.getElementById('info').textContent='Failed to load';});
 }
 loadInfo();
 </script>
 </body></html>
 )html";
 
-static void live_handle_root() {
-    live_srv->send(200, "text/html;charset=utf-8", String(FPSTR(LIVE_HTML)));
+// ---- Route handlers ----
+
+static void handle_root() {
+    String dip = load_dirigera_ip();
+    if (dip.isEmpty()) {
+        app_srv.send(200, "text/html;charset=utf-8", String(FPSTR(PAGE_SETUP)));
+    } else {
+        app_srv.send(200, "text/html;charset=utf-8", String(FPSTR(PAGE_LIVE)));
+    }
 }
-static void live_handle_demo() {
+
+static void handle_pair_start() {
+    if (!app_srv.hasArg("ip")) {
+        app_srv.send(400, "application/json", "{\"ok\":false,\"msg\":\"No IP\"}");
+        return;
+    }
+    pair_ip    = app_srv.arg("ip");
+    pair_state = PairState::WAITING;
+    app_srv.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handle_pair_status() {
+    String json;
+    if      (pair_state == PairState::DONE)   json = "{\"done\":true}";
+    else if (pair_state == PairState::FAILED)  json = "{\"failed\":true}";
+    else                                        json = "{\"done\":false,\"failed\":false}";
+    app_srv.send(200, "application/json", json);
+}
+
+static void handle_demo() {
     g_demo_pending = true;
-    live_srv->send(200, "application/json", "{\"ok\":true}");
+    app_srv.send(200, "application/json", "{\"ok\":true}");
 }
-static void live_handle_refresh() {
-    // Force immediate poll
-    live_srv->send(200, "application/json", "{\"ok\":true}");
+
+static void handle_clear_demo() {
+    // reboot back to real data — simplest approach
+    app_srv.send(200, "application/json", "{\"ok\":true}");
+    delay(300);
+    ESP.restart();
 }
-static void live_handle_status() {
+
+static void handle_refresh() {
+    app_srv.send(200, "application/json", "{\"ok\":true}");
+    // dc.loop() will re-poll on next cycle
+}
+
+static void handle_status() {
     String body = "{\"ip\":\"" + WiFi.localIP().toString() + "\","
                   "\"ssid\":\"" + WiFi.SSID() + "\","
                   "\"dirigera\":\"" + load_dirigera_ip() + "\","
                   "\"devices\":" + String(dc.entities().size()) + ","
                   "\"uptime\":" + String(millis()/1000) + "}";
-    live_srv->send(200, "application/json", body);
+    app_srv.send(200, "application/json", body);
 }
 
-static void start_live_server() {
-    live_srv = new WebServer(80);
-    live_srv->on("/",        HTTP_GET, live_handle_root);
-    live_srv->on("/demo",    HTTP_GET, live_handle_demo);
-    live_srv->on("/refresh", HTTP_GET, live_handle_refresh);
-    live_srv->on("/status",  HTTP_GET, live_handle_status);
-    live_srv->begin();
-    Serial.println("Live server started on port 80");
+static void start_app_server() {
+    app_srv.on("/",            HTTP_GET, handle_root);
+    app_srv.on("/pair_start",  HTTP_GET, handle_pair_start);
+    app_srv.on("/pair_status", HTTP_GET, handle_pair_status);
+    app_srv.on("/demo",        HTTP_GET, handle_demo);
+    app_srv.on("/clear_demo",  HTTP_GET, handle_clear_demo);
+    app_srv.on("/refresh",     HTTP_GET, handle_refresh);
+    app_srv.on("/status",      HTTP_GET, handle_status);
+    app_srv.begin();
+    Serial.println("App server started on :80");
 }
 
 // -- setup / loop --
@@ -357,15 +331,14 @@ void setup() {
     WiFiManager wm;
     wm.setTitle(APP_NAME);
     wm.setDarkMode(true);
-    // Override WiFiManager portal colors to match dark/orange theme
     wm.setCustomHeadElement(
         "<style>"
-        "body{background:#1c1c1e!important;color:#fff!important;font-family:-apple-system,sans-serif!important}"
-        "h1,h2,h3,label{color:#fff!important}"
-        ".wrap{background:#2c2c2e!important;border-radius:16px!important;border:1px solid #38383a!important;box-shadow:none!important}"
-        "input[type='text'],input[type='password'],select{background:#3a3a3c!important;border:1px solid #48484a!important;color:#fff!important;border-radius:10px!important}"
-        "input[type='submit'],button,.btn{background:#ff9500!important;color:#fff!important;border:none!important;border-radius:12px!important}"
-        "a{color:#ff9500!important}"
+        "body,div,section{background:#1c1c1e!important;color:#fff!important}"
+        ".wrap{background:#2c2c2e!important;border:1px solid #38383a!important;box-shadow:none!important}"
+        "h1,h2,h3,p,label,li,div{color:#fff!important}"
+        "input{background:#3a3a3c!important;border:1px solid #48484a!important;color:#fff!important;border-radius:10px!important}"
+        "button,input[type=submit]{background:#ff9500!important;color:#fff!important;border:none!important;border-radius:12px!important}"
+        "a,a:visited{color:#ff9500!important}"
         "</style>"
     );
     wm.setConfigPortalBlocking(false);
@@ -376,21 +349,24 @@ void setup() {
     }
     Serial.printf("WiFi: %s\n", WiFi.localIP().toString().c_str());
 
-    // DIRIGERA config
-    String dip   = load_dirigera_ip();
-    String dtok  = load_dirigera_token();
+    // Start web server immediately after WiFi — demo always available
+    start_app_server();
+
+    String dip  = load_dirigera_ip();
+    String dtok = load_dirigera_token();
+
     if (dip.isEmpty() || dtok.isEmpty()) {
-        run_setup_server();  // never returns
+        // Show pairing instructions and let loop() handle the rest
+        ui.set_status(("Pair DIRIGERA:\nhttp://" + WiFi.localIP().toString()).c_str());
+        flush_ui(50);
+        return;
     }
 
     // Connect to DIRIGERA
     ui.set_status(("DIRIGERA\n" + dip + "\nLoading devices...").c_str());
     flush_ui(100);
 
-    dc.on_ready([&]() {
-        ui.build_home();
-        if (!live_srv) start_live_server();
-    });
+    dc.on_ready([&]() { ui.build_home(); });
     dc.on_update([&](const HAEntity& e) {
         g_pending_entity = e;
         g_update_pending = true;
@@ -401,11 +377,11 @@ void setup() {
 static uint32_t g_bat_last = 0;
 
 void loop() {
+    app_srv.handleClient();
     dc.loop();
-    if (live_srv) live_srv->handleClient();
     lv_timer_handler();
 
-    // Home button -> close detail / go to home screen
+    // Home button
     if (g_home_pressed) {
         g_home_pressed = false;
         ui.go_home();
@@ -418,7 +394,31 @@ void loop() {
 
     if (g_demo_pending) {
         g_demo_pending = false;
-        dc.load_demo();   // fires on_ready -> ui.build_home()
+        // Set callbacks if not already set (e.g. when in pairing mode)
+        dc.on_ready([&]() { ui.build_home(); });
+        dc.load_demo();
+    }
+
+    // Handle DIRIGERA pairing state machine
+    if (pair_state == PairState::WAITING) {
+        pair_state = PairState::IDLE;   // prevent re-entry
+        String ip_str = WiFi.localIP().toString();
+        ui.set_status(("Pair DIRIGERA:\nhttp://" + ip_str + "\n\nPress button on hub!").c_str());
+        flush_ui(50);
+
+        String token;
+        bool ok = DirigeraClient::pair(pair_ip, token);
+        if (ok) {
+            save_dirigera(pair_ip, token);
+            pair_state = PairState::DONE;
+            ui.set_status("Paired!\nRebooting...");
+            flush_ui(2000);
+            ESP.restart();
+        } else {
+            pair_state = PairState::FAILED;
+            ui.set_status(("Pair DIRIGERA:\nhttp://" + ip_str + "\n\nFailed. Try again.").c_str());
+            flush_ui(50);
+        }
     }
 
     // Battery update every 30 s
