@@ -271,7 +271,7 @@ btn.addEventListener('click', async () => {
       flashMode: 'keep',
       flashFreq: 'keep',
       eraseAll:  false,
-      compress:  false,
+      compress:  true,
       reportProgress(fileIndex, written, total) {
         if (fileIndex !== lastFile) {
           lastFile = fileIndex;
