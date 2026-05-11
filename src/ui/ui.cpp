@@ -424,5 +424,3 @@ void UI::_close_detail_cb(lv_event_t* ev) {
     UI* self = (UI*)lv_event_get_user_data(ev);
     self->_close_detail();
 }
-il();
-}
