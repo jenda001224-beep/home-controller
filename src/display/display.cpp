@@ -109,8 +109,13 @@ static void lvgl_touch_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
 }
 
 void display_init() {
-    // Force backlight ON via raw GPIO before LovyanGFX takes over,
-    // so the screen lights up even if PWM init is slow.
+    // GPIO 15 = power enable for the T-Display S3 Pro display module.
+    // Without this the screen has no power and stays completely dead.
+    pinMode(15, OUTPUT);
+    digitalWrite(15, HIGH);
+    delay(50);
+
+    // Force backlight ON before LovyanGFX configures its PWM.
     pinMode(PIN_LCD_BL, OUTPUT);
     digitalWrite(PIN_LCD_BL, HIGH);
 
