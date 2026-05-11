@@ -130,7 +130,7 @@
     <div class="icon">🏠</div>
     <h1>Home Controller</h1>
     <p>Apple Home-style controller for LilyGO T-Display S3 Pro.<br>
-       Plug in your board, then click Install.</p>
+       <b style="color:#ff9500">Before clicking Install:</b> hold <b>BOOT</b>, tap <b>RST</b>, release <b>BOOT</b>. Then click Install.</p>
   </div>
 
   <button id="btn-flash">⚡ Install Firmware</button>
@@ -241,7 +241,8 @@ btn.addEventListener('click', async () => {
     setProgress(5, 'Connecting...');
 
     const loader = new ESPLoader({ transport, baudrate: 921600, terminal });
-    await loader.connect();
+    // "no_reset": board must already be in bootloader mode (hold BOOT → tap RST → release BOOT)
+    await loader.connect('no_reset');
 
     log('Connected! Fetching firmware...');
     setProgress(12, 'Downloading firmware...');
