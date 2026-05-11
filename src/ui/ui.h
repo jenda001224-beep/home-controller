@@ -12,16 +12,20 @@ public:
     void show_splash();
     void set_status(const char* msg);
     void go_home();
-    void set_battery(int pct);   // 0-100, call from main loop
+
+    void set_battery(int pct, bool charging = false);
+    void set_grid_cols(uint8_t cols);   // 2 or 3, takes effect on next build_home()
+    uint8_t grid_cols() const { return _grid_cols; }
 
 private:
-    DirigeraClient* _dc = nullptr;
+    DirigeraClient* _dc        = nullptr;
+    uint8_t         _grid_cols = 2;
 
-    lv_obj_t* _scr_splash  = nullptr;
-    lv_obj_t* _scr_home    = nullptr;
+    lv_obj_t* _scr_splash    = nullptr;
+    lv_obj_t* _scr_home      = nullptr;
     lv_obj_t* _splash_status = nullptr;
-    lv_obj_t* _tabview     = nullptr;
-    lv_obj_t* _bat_label   = nullptr;   // header battery label
+    lv_obj_t* _tabview       = nullptr;
+    lv_obj_t* _bat_label     = nullptr;
     std::vector<lv_obj_t*> _grids;
 
     // Detail panel
@@ -30,8 +34,7 @@ private:
     lv_obj_t* _detail_switch     = nullptr;
     lv_obj_t* _detail_brightness = nullptr;
     lv_obj_t* _detail_colorwheel = nullptr;
-
-    String _detail_entity_id;
+    String    _detail_entity_id;
 
     struct TileRef {
         String    entity_id;

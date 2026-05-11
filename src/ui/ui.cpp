@@ -33,7 +33,7 @@ void UI::show_splash() {
     lv_obj_t* icon = lv_label_create(_scr_splash);
     lv_label_set_text(icon, LV_SYMBOL_HOME);
     lv_obj_set_style_text_font(icon, &lv_font_montserrat_32, 0);
-    lv_obj_set_style_text_color(icon, C_ACCENT, 0);   // orange
+    lv_obj_set_style_text_color(icon, C_ACCENT, 0);
     lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(icon, TFT_WIDTH - 40);
     lv_obj_align(icon, LV_ALIGN_CENTER, 0, -70);
@@ -42,7 +42,7 @@ void UI::show_splash() {
     lv_obj_t* title = lv_label_create(_scr_splash);
     lv_label_set_text(title, APP_NAME);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-    lv_obj_set_style_text_color(title, C_TEXT2, 0);    // gray, not white
+    lv_obj_set_style_text_color(title, C_TEXT2, 0);
     lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(title, TFT_WIDTH - 40);
     lv_obj_align(title, LV_ALIGN_CENTER, 0, -30);
@@ -57,7 +57,7 @@ void UI::show_splash() {
     lv_obj_align(_splash_status, LV_ALIGN_CENTER, 0, 20);
     lv_label_set_long_mode(_splash_status, LV_LABEL_LONG_WRAP);
 
-    // Spinner — orange track, gray background
+    // Spinner — orange on gray
     lv_obj_t* spin = lv_spinner_create(_scr_splash, 1000, 60);
     lv_obj_set_size(spin, 36, 36);
     lv_obj_align(spin, LV_ALIGN_CENTER, 0, 90);
@@ -74,7 +74,6 @@ void UI::set_status(const char* msg) {
 // -- Home screen --
 
 void UI::build_home() {
-    // Clean up previous home screen if rebuilding (e.g. demo reload)
     if (_scr_home) {
         lv_obj_del(_scr_home);
         _scr_home  = nullptr;
@@ -100,15 +99,25 @@ void UI::go_home() {
     if (_scr_home) lv_scr_load_anim(_scr_home, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);
 }
 
-void UI::set_battery(int pct) {
+void UI::set_grid_cols(uint8_t cols) {
+    _grid_cols = (cols == 3) ? 3 : 2;
+}
+
+void UI::set_battery(int pct, bool charging) {
     if (!_bat_label) return;
-    char buf[24];
-    snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
+    char buf[28];
+    if (charging) {
+        snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %d%%", pct);
+        lv_obj_set_style_text_color(_bat_label, C_GREEN, 0);
+    } else {
+        snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
+        lv_obj_set_style_text_color(_bat_label, C_TEXT2, 0);
+    }
     lv_label_set_text(_bat_label, buf);
 }
 
 void UI::_build_tabs() {
-    // Header bar
+    // Header
     lv_obj_t* header = lv_obj_create(_scr_home);
     lv_obj_set_size(header, TFT_WIDTH, 48);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
@@ -123,7 +132,6 @@ void UI::_build_tabs() {
     lv_obj_set_style_text_color(title, C_TEXT, 0);
     lv_obj_align(title, LV_ALIGN_LEFT_MID, 16, 0);
 
-    // Battery indicator
     _bat_label = lv_label_create(header);
     lv_label_set_text(_bat_label, LV_SYMBOL_BATTERY_FULL " --");
     lv_obj_set_style_text_font(_bat_label, &lv_font_montserrat_12, 0);
@@ -154,7 +162,7 @@ void UI::_build_tabs() {
         lv_obj_set_style_border_width(g, 0, 0);
         lv_obj_set_layout(g, LV_LAYOUT_FLEX);
         lv_obj_set_flex_flow(g, LV_FLEX_FLOW_ROW_WRAP);
-        lv_obj_set_flex_align(g, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        lv_obj_set_flex_align(g, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_set_style_pad_row(g, 10, 0);
         lv_obj_set_style_pad_column(g, 10, 0);
         lv_obj_set_style_pad_all(g, 12, 0);
@@ -182,8 +190,16 @@ void UI::_build_tabs() {
 // -- Tiles --
 
 void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
+    // Tile width depends on grid_cols
+    int gap     = 10;
+    int padding = 12;
+    int tw = (_grid_cols == 3)
+        ? (TFT_WIDTH - padding*2 - gap*2) / 3
+        : (TFT_WIDTH - padding*2 - gap) / 2;
+    int th_ = (_grid_cols == 3) ? 84 : 110;
+
     lv_obj_t* tile = lv_obj_create(grid);
-    lv_obj_set_size(tile, (TFT_WIDTH - 34) / 2, 110);
+    lv_obj_set_size(tile, tw, th_);
     style_card(tile);
     lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_pad_all(tile, 10, 0);
@@ -196,7 +212,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
 
     lv_obj_t* icon = lv_label_create(tile);
     lv_label_set_text(icon, entity_icon(entity));
-    lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(icon, (_grid_cols == 3) ? &lv_font_montserrat_18 : &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(icon, entity.is_on() ? C_ACCENT : C_TEXT2, 0);
     lv_obj_align(icon, LV_ALIGN_TOP_LEFT, 0, 0);
 
@@ -205,7 +221,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
     lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(name_lbl, lv_pct(100));
     style_label_primary(name_lbl);
-    lv_obj_align(name_lbl, LV_ALIGN_BOTTOM_LEFT, 0, -18);
+    lv_obj_align(name_lbl, LV_ALIGN_BOTTOM_LEFT, 0, -16);
 
     lv_obj_t* state_lbl = lv_label_create(tile);
     lv_label_set_text(state_lbl, entity.is_on() ? "On" : "Off");
@@ -236,13 +252,9 @@ void UI::_update_tile(TileRef& ref, const HAEntity& e) {
 
 void UI::on_entity_update(const HAEntity& e) {
     for (auto& ref : _tiles) {
-        if (ref.entity_id == e.entity_id) {
-            _update_tile(ref, e);
-            break;
-        }
+        if (ref.entity_id == e.entity_id) { _update_tile(ref, e); break; }
     }
-    if (_detail_entity_id == e.entity_id && _detail_panel)
-        _detail_update(e);
+    if (_detail_entity_id == e.entity_id && _detail_panel) _detail_update(e);
 }
 
 // -- Detail panel --
@@ -253,7 +265,6 @@ void UI::_show_detail(const String& entity_id) {
     const HAEntity& e = *ep;
     _detail_entity_id = entity_id;
 
-    // Backdrop
     lv_obj_t* backdrop = lv_obj_create(_scr_home);
     lv_obj_set_size(backdrop, TFT_WIDTH, TFT_HEIGHT);
     lv_obj_set_style_bg_color(backdrop, lv_color_black(), 0);
@@ -273,7 +284,6 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_clear_flag(_detail_panel, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_pad_all(_detail_panel, 20, 0);
 
-    // Drag handle
     lv_obj_t* handle = lv_obj_create(_detail_panel);
     lv_obj_set_size(handle, 40, 4);
     lv_obj_align(handle, LV_ALIGN_TOP_MID, 0, 0);
@@ -281,14 +291,12 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_set_style_border_width(handle, 0, 0);
     lv_obj_set_style_radius(handle, 4, 0);
 
-    // Title
     _detail_title = lv_label_create(_detail_panel);
     lv_label_set_text(_detail_title, e.friendly_name.c_str());
     lv_obj_set_style_text_font(_detail_title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(_detail_title, C_TEXT, 0);
     lv_obj_align(_detail_title, LV_ALIGN_TOP_MID, 0, 16);
 
-    // Power row
     lv_obj_t* sw_row = lv_obj_create(_detail_panel);
     lv_obj_set_size(sw_row, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(sw_row, 0, 0);
@@ -311,7 +319,6 @@ void UI::_show_detail(const String& entity_id) {
 
     int next_y = 100;
 
-    // Brightness slider (Apple-style pill)
     if (e.supports_brightness) {
         lv_obj_t* br_lbl = lv_label_create(_detail_panel);
         lv_label_set_text(br_lbl, LV_SYMBOL_IMAGE "  Brightness");
@@ -334,7 +341,6 @@ void UI::_show_detail(const String& entity_id) {
         next_y += 80;
     }
 
-    // Color wheel
     if (e.supports_color) {
         lv_obj_t* col_lbl = lv_label_create(_detail_panel);
         lv_label_set_text(col_lbl, LV_SYMBOL_EDIT "  Colour");
@@ -385,8 +391,8 @@ void UI::_tile_clicked(lv_event_t* ev) {
 }
 
 void UI::_detail_switch_changed(lv_event_t* ev) {
-    UI* self      = (UI*)lv_event_get_user_data(ev);
-    lv_obj_t* sw  = lv_event_get_target(ev);
+    UI* self     = (UI*)lv_event_get_user_data(ev);
+    lv_obj_t* sw = lv_event_get_target(ev);
     bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
     if (self->_dc && !self->_detail_entity_id.isEmpty()) {
         if (on) self->_dc->turn_on(self->_detail_entity_id);
@@ -395,11 +401,10 @@ void UI::_detail_switch_changed(lv_event_t* ev) {
 }
 
 void UI::_brightness_changed(lv_event_t* ev) {
-    UI* self        = (UI*)lv_event_get_user_data(ev);
-    lv_obj_t* sl    = lv_event_get_target(ev);
-    int val = lv_slider_get_value(sl);
+    UI* self     = (UI*)lv_event_get_user_data(ev);
+    lv_obj_t* sl = lv_event_get_target(ev);
     if (self->_dc && !self->_detail_entity_id.isEmpty())
-        self->_dc->set_brightness(self->_detail_entity_id, (uint8_t)val);
+        self->_dc->set_brightness(self->_detail_entity_id, (uint8_t)lv_slider_get_value(sl));
 }
 
 void UI::_color_changed(lv_event_t* ev) {

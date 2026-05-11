@@ -5,7 +5,7 @@
 #include <Wire.h>
 #include <touch/TouchDrvCSTXXX.hpp>
 
-// ── LovyanGFX — display only (no touch driver, handled by SensorLib) ────────
+// -- LovyanGFX display (no touch driver here — handled by SensorLib) --
 
 class LGFX : public lgfx::LGFX_Device {
     lgfx::Panel_ST7796 _panel;
@@ -60,16 +60,18 @@ public:
 
 static LGFX lcd;
 
-// ── SensorLib touch (CST226SE) ───────────────────────────────────────────────
+// -- SensorLib touch (CST226SE) --
 
 static TouchDrvCSTXXX touch;
-volatile bool g_home_pressed = false;
+volatile bool    g_home_pressed  = false;
+volatile uint32_t g_last_activity = 0;   // millis() of last touch/button
 
 static void home_button_cb(void*) {
-    g_home_pressed = true;
+    g_home_pressed   = true;
+    g_last_activity  = millis();
 }
 
-// ── LVGL glue ────────────────────────────────────────────────────────────────
+// -- LVGL glue --
 
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t* buf1 = nullptr;
@@ -86,21 +88,26 @@ static void lvgl_flush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px
 }
 
 static void lvgl_touch_read(lv_indev_drv_t*, lv_indev_data_t* data) {
+    if (!touch.isPressed()) {
+        data->state = LV_INDEV_STATE_REL;
+        return;
+    }
     const TouchPoints& pts = touch.getTouchPoints();
     if (pts.hasPoints()) {
         const TouchPoint& p = pts.getPoint(0);
         data->state   = LV_INDEV_STATE_PR;
         data->point.x = (lv_coord_t)p.x;
         data->point.y = (lv_coord_t)p.y;
+        g_last_activity = millis();
     } else {
         data->state = LV_INDEV_STATE_REL;
     }
 }
 
-// ── Public init ──────────────────────────────────────────────────────────────
+// -- Public init --
 
 void display_init() {
-    // Force backlight on before PWM init
+    // Backlight on before PWM init
     pinMode(PIN_LCD_BL, OUTPUT);
     digitalWrite(PIN_LCD_BL, HIGH);
 
@@ -108,10 +115,12 @@ void display_init() {
     lcd.setRotation(0);
     lcd.setBrightness(200);
 
-    // Touch — CST226SE via SensorLib
+    // Touch — CST226SE via SensorsLib
+    // IMPORTANT: setPins() BEFORE begin(), and begin() takes (Wire, I2C_ADDR, sda, scl)
     Wire.begin(PIN_TOUCH_SDA, PIN_TOUCH_SCL);
-    if (!touch.begin(Wire, PIN_TOUCH_RST, PIN_TOUCH_SDA, PIN_TOUCH_SCL)) {
-        Serial.println("Touch init failed");
+    touch.setPins(PIN_TOUCH_RST, PIN_TOUCH_INT);
+    if (!touch.begin(Wire, CST226SE_ADDR, PIN_TOUCH_SDA, PIN_TOUCH_SCL)) {
+        Serial.println("Touch init failed — check I2C address/wiring");
     }
     touch.setHomeButtonCallback(home_button_cb, nullptr);
 
@@ -137,11 +146,23 @@ void display_init() {
     disp_drv.draw_buf = &draw_buf;
     lv_disp_drv_register(&disp_drv);
 
+    // Set orange/gray theme PROGRAMMATICALLY — lv_color_hex() cannot be used
+    // inside lv_conf.h macros as it's an inline function, not a preprocessor expr.
+    lv_theme_t* th = lv_theme_default_init(
+        lv_disp_get_default(),
+        lv_color_hex(0xFF9500),   // primary:   orange
+        lv_color_hex(0x8E8E93),   // secondary: gray
+        true,                      // dark mode
+        LV_FONT_DEFAULT);
+    lv_disp_set_theme(lv_disp_get_default(), th);
+
     static lv_indev_drv_t indev_drv;
     lv_indev_drv_init(&indev_drv);
     indev_drv.type    = LV_INDEV_TYPE_POINTER;
     indev_drv.read_cb = lvgl_touch_read;
     lv_indev_drv_register(&indev_drv);
+
+    g_last_activity = millis();
 }
 
 void display_set_brightness(uint8_t level) {
