@@ -259,8 +259,9 @@ btn.addEventListener('click', async () => {
       const resp = await fetch(p.url);
       if (!resp.ok) throw new Error(`Could not fetch ${p.url} (${resp.status})`);
       const buf = await resp.arrayBuffer();
-      fileArray.push({ data: new Uint8Array(buf), address: p.address });
-      log(`  ${p.url}  (${(u8.length / 1024).toFixed(1)} KB)`, 'dim');
+      const data = new Uint8Array(buf);
+      fileArray.push({ data, address: p.address });
+      log(`  ${p.url}  (${(data.length / 1024).toFixed(1)} KB)`, 'dim');
       setProgress(12 + ((i + 1) / PARTS.length) * 8, `Downloading ${i + 1}/${PARTS.length}...`);
     }
 
