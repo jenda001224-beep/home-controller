@@ -35,13 +35,16 @@ jobs:
       - name: Compile firmware
         run: python -m platformio run -e tdisplay-s3-pro
 
-      - name: Build self-contained flasher HTML
-        run: python tools/make_flasher.py --build
-
-      - name: Prepare Pages folder
+      - name: Assemble site
         run: |
           mkdir -p _site
-          cp homecontroller-flash.html _site/index.html
+          cp site/index.html    _site/index.html
+          cp site/manifest.json _site/manifest.json
+          cp .pio/build/tdisplay-s3-pro/bootloader.bin _site/bootloader.bin
+          cp .pio/build/tdisplay-s3-pro/partitions.bin _site/partitions.bin
+          cp .pio/build/tdisplay-s3-pro/firmware.bin   _site/firmware.bin
+          BOOT=$(find ~/.platformio/packages -name "boot_app0.bin" | head -1)
+          cp "$BOOT" _site/boot_app0.bin
 
       - uses: actions/upload-pages-artifact@v3
         with:
