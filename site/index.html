@@ -266,10 +266,10 @@ btn.addEventListener('click', async () => {
     await loader.writeFlash({
       fileArray,
       flashSize: 'keep',
-      flashMode: 'dio',
-      flashFreq: '80m',
+      flashMode: 'keep',
+      flashFreq: 'keep',
       eraseAll:  false,
-      compress:  true,
+      compress:  false,
       reportProgress(fileIndex, written, total) {
         if (fileIndex !== lastFile) {
           lastFile = fileIndex;
