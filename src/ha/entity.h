@@ -7,9 +7,9 @@ enum class EntityType { LIGHT, SWITCH, FAN, UNKNOWN };
 // Icon codepoints from LVGL built-in symbol font
 static const char* icon_for_type(EntityType t, bool on) {
     switch (t) {
-        case EntityType::LIGHT:  return on ? LV_SYMBOL_EYE_OPEN : LV_SYMBOL_EYE_CLOSE;
-        case EntityType::SWITCH: return on ? LV_SYMBOL_POWER    : LV_SYMBOL_POWER;
-        case EntityType::FAN:    return LV_SYMBOL_LOOP;
+        case EntityType::LIGHT:  return on ? LV_SYMBOL_IMAGE  : LV_SYMBOL_TINT;
+        case EntityType::SWITCH: return LV_SYMBOL_POWER;
+        case EntityType::FAN:    return LV_SYMBOL_REFRESH;
         default:                 return LV_SYMBOL_SETTINGS;
     }
 }
