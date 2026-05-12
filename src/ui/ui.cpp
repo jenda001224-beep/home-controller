@@ -27,6 +27,7 @@ void UI::begin(DirigeraClient* dc) {
 void UI::show_splash() {
     _scr_splash = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(_scr_splash, C_BG, 0);
+    lv_obj_set_style_bg_opa(_scr_splash, LV_OPA_COVER, 0);
     lv_scr_load(_scr_splash);
 
     // Large home icon — orange, above the name
@@ -88,6 +89,7 @@ void UI::build_home() {
     }
     _scr_home = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(_scr_home, C_BG, 0);
+    lv_obj_set_style_bg_opa(_scr_home, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(_scr_home, 0, 0);
     lv_obj_clear_flag(_scr_home, LV_OBJ_FLAG_SCROLLABLE);
     _build_tabs();
@@ -122,6 +124,7 @@ void UI::_build_tabs() {
     lv_obj_set_size(header, TFT_WIDTH, 48);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(header, C_BG, 0);
+    lv_obj_set_style_bg_opa(header, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(header, 0, 0);
     lv_obj_clear_flag(header, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_pad_all(header, 0, 0);
@@ -142,7 +145,9 @@ void UI::_build_tabs() {
     lv_obj_set_pos(_tabview, 0, 48);
     lv_obj_set_size(_tabview, TFT_WIDTH, TFT_HEIGHT - 48);
     lv_obj_set_style_bg_color(_tabview, C_BG, 0);
+    lv_obj_set_style_bg_opa(_tabview, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(_tabview, C_BG, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_tabview, LV_OPA_COVER, LV_PART_MAIN);
 
     // Zero out the tabview's inner content panel padding so grids fill edge-to-edge
     lv_obj_t* tv_content = lv_obj_get_child(_tabview, 1);
@@ -178,6 +183,7 @@ void UI::_build_tabs() {
         // 100% of the tab content width; height grows with content (tab itself scrolls)
         lv_obj_set_size(g, lv_pct(100), LV_SIZE_CONTENT);
         lv_obj_set_style_bg_color(g, C_BG, 0);
+        lv_obj_set_style_bg_opa(g, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(g, 0, 0);
         lv_obj_set_layout(g, LV_LAYOUT_FLEX);
         lv_obj_set_flex_flow(g, LV_FLEX_FLOW_ROW_WRAP);
