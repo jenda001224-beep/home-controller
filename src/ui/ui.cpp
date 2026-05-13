@@ -4,7 +4,8 @@
 #include <Arduino.h>
 
 static const char* entity_icon(const HAEntity& e) {
-    if (e.type == EntityType::LIGHT)  return e.is_on() ? LV_SYMBOL_IMAGE : LV_SYMBOL_TINT;
+    // Use the same reliable symbol per entity type — color shows on/off state
+    if (e.type == EntityType::LIGHT)  return LV_SYMBOL_IMAGE;   // picture/light glyph
     if (e.type == EntityType::SWITCH) return LV_SYMBOL_POWER;
     return LV_SYMBOL_SETTINGS;
 }
@@ -203,16 +204,22 @@ void UI::_build_tabs() {
         lv_obj_set_style_border_width(tab, 0, 0);
         lv_obj_set_style_bg_color(tab, lv_color_black(), 0);
         lv_obj_set_style_bg_opa(tab,   0, 0);
+        // Lock to vertical scroll only so tiles never drift off to the right
+        lv_obj_set_scroll_dir(tab, LV_DIR_VER);
+        lv_obj_add_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
     };
 
     auto make_grid = [&](lv_obj_t* tab) -> lv_obj_t* {
         prep_tab(tab);
         lv_obj_t* g = lv_obj_create(tab);
-        // 100% of the tab content width; height grows with content (tab itself scrolls)
-        lv_obj_set_size(g, lv_pct(100), LV_SIZE_CONTENT);
+        // Explicit pixel width — never exceeds the screen edge
+        lv_obj_set_size(g, TFT_WIDTH, LV_SIZE_CONTENT);
+        lv_obj_set_style_max_width(g, TFT_WIDTH, 0);
         lv_obj_set_style_bg_color(g, C_BG, 0);
         lv_obj_set_style_bg_opa(g, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(g, 0, 0);
+        // Grid itself must NOT scroll — the tab container scrolls vertically
+        lv_obj_clear_flag(g, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_layout(g, LV_LAYOUT_FLEX);
         if (_grid_cols == 1) {
             lv_obj_set_flex_flow(g, LV_FLEX_FLOW_COLUMN);
@@ -256,10 +263,12 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
         int tw = TFT_WIDTH - padding * 2;
 
         lv_obj_t* tile = lv_obj_create(grid);
-        lv_obj_set_size(tile, tw, 58);
+        lv_obj_set_size(tile, tw, 62);   // 62px = comfortable finger target
         style_card(tile);
         lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_clip_corner(tile, true, 0);
         lv_obj_set_style_pad_all(tile, 0, 0);
+        lv_obj_set_ext_click_area(tile, 6);   // wider invisible hit zone
         lv_obj_set_layout(tile, LV_LAYOUT_FLEX);
         lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(tile, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -418,7 +427,7 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_add_flag(_detail_panel, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(_detail_panel, _close_detail_cb, LV_EVENT_SHORT_CLICKED, this);
 
-    // Handle bar
+    // Handle bar (drag indicator)
     lv_obj_t* handle = lv_obj_create(_detail_panel);
     lv_obj_set_size(handle, 48, 5);
     lv_obj_align(handle, LV_ALIGN_TOP_MID, 0, 10);
@@ -426,6 +435,23 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_set_style_bg_opa(handle, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(handle, 0, 0);
     lv_obj_set_style_radius(handle, 3, 0);
+
+    // Close button — top-right corner, large touch target
+    lv_obj_t* close_btn = lv_btn_create(_detail_panel);
+    lv_obj_set_size(close_btn, 44, 44);
+    lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -8, 4);
+    lv_obj_set_style_bg_color(close_btn, C_BG2, 0);
+    lv_obj_set_style_bg_opa(close_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(close_btn, 22, 0);
+    lv_obj_set_style_shadow_width(close_btn, 0, 0);
+    lv_obj_set_style_border_width(close_btn, 0, 0);
+    lv_obj_set_ext_click_area(close_btn, 8);
+    lv_obj_add_event_cb(close_btn, _close_detail_cb, LV_EVENT_SHORT_CLICKED, this);
+    lv_obj_t* close_lbl = lv_label_create(close_btn);
+    lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
+    lv_obj_set_style_text_color(close_lbl, C_TEXT2, 0);
+    lv_obj_set_style_text_font(close_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_align(close_lbl, LV_ALIGN_CENTER, 0, 0);
 
     // Device name
     _detail_title = lv_label_create(_detail_panel);
@@ -644,7 +670,13 @@ void UI::_color_changed(lv_event_t* ev) {
 }
 
 void UI::_close_detail_cb(lv_event_t* ev) {
-    ((UI*)lv_event_get_user_data(ev))->_close_detail();
+    UI* self = (UI*)lv_event_get_user_data(ev);
+    lv_obj_t* target = lv_event_get_target(ev);
+    lv_obj_t* current = lv_event_get_current_target(ev);
+    // Fire only when clicking directly on the registered object (panel bg or close btn)
+    // Prevents event bubble from child widgets accidentally closing the panel
+    if (target != current) return;
+    self->_close_detail();
 }
 
 void UI::_go_color_cb(lv_event_t* ev) {

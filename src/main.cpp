@@ -35,7 +35,7 @@ static void load_settings() {
     prefs.begin("hc_cfg", true);
     cfg_brightness = prefs.getUChar("bri",    200);
     cfg_sleep_sec  = prefs.getUShort("sleep", SLEEP_SEC_DEFAULT);
-    cfg_grid_cols  = prefs.getUChar("grid",   2);
+    cfg_grid_cols  = prefs.getUChar("grid",   1);   // default: list layout
     prefs.end();
 }
 static void save_settings() {
@@ -155,10 +155,11 @@ static String settings_card_html() {
     h += "<option value='30'" + String(cfg_sleep_sec==30 ?" selected":"") + ">30 seconds</option>";
     h += "<option value='60'" + String(cfg_sleep_sec==60 ?" selected":"") + ">1 minute</option>";
     h += "</select>";
-    h += "<label>Grid columns</label>";
+    h += "<label>Layout</label>";
     h += "<select id='grd'>";
-    h += "<option value='2'" + String(cfg_grid_cols==2?" selected":"") + ">2 columns</option>";
-    h += "<option value='3'" + String(cfg_grid_cols==3?" selected":"") + ">3 columns</option>";
+    h += "<option value='1'" + String(cfg_grid_cols==1?" selected":"") + ">List (1 column)</option>";
+    h += "<option value='2'" + String(cfg_grid_cols==2?" selected":"") + ">Grid (2 columns)</option>";
+    h += "<option value='3'" + String(cfg_grid_cols==3?" selected":"") + ">Compact (3 columns)</option>";
     h += "</select>";
     h += "<div class='status' id='ss'></div></div>";
     return h;
@@ -336,7 +337,7 @@ static void handle_settings_set() {
         cfg_sleep_sec = (uint16_t)app_srv.arg("sleep").toInt(); changed = true;
     }
     if (app_srv.hasArg("grid")) {
-        cfg_grid_cols = (uint8_t)constrain(app_srv.arg("grid").toInt(), 2, 3);
+        cfg_grid_cols = (uint8_t)constrain(app_srv.arg("grid").toInt(), 1, 3);
         ui.set_grid_cols(cfg_grid_cols); changed = true;
     }
     if (changed) save_settings();
