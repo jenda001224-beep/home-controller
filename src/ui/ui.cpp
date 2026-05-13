@@ -3,9 +3,9 @@
 #include "config.h"
 #include <Arduino.h>
 
-static constexpr int TILE_PAD  = 10;                      // outer margin around tile list
-static constexpr int TILE_W    = TFT_WIDTH - TILE_PAD * 2; // list-mode tile pixel width
-static constexpr int TILE_H    = 62;
+static constexpr int TILE_PAD  = 20;                       // visible margin on each side
+static constexpr int TILE_W    = TFT_WIDTH - TILE_PAD * 2; // = 280px (87.5% of 320)
+static constexpr int TILE_H    = 68;                        // slightly taller = less squished
 
 static const char* entity_icon(const HAEntity& e) {
     // Use the same reliable symbol per entity type — color shows on/off state
@@ -274,7 +274,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
 
         // Icon column — NOT clickable so taps pass through to the tile
         lv_obj_t* icon_box = lv_obj_create(tile);
-        lv_obj_set_size(icon_box, 52, 58);
+        lv_obj_set_size(icon_box, 52, TILE_H);
         lv_obj_set_style_bg_opa(icon_box, 0, 0);
         lv_obj_set_style_border_width(icon_box, 0, 0);
         lv_obj_set_style_pad_all(icon_box, 0, 0);
@@ -289,7 +289,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
 
         // Text column — NOT clickable so taps pass through to the tile
         lv_obj_t* text_box = lv_obj_create(tile);
-        lv_obj_set_size(text_box, LV_SIZE_CONTENT, 58);
+        lv_obj_set_size(text_box, LV_SIZE_CONTENT, TILE_H);
         lv_obj_set_flex_grow(text_box, 1);
         lv_obj_set_style_bg_opa(text_box, 0, 0);
         lv_obj_set_style_border_width(text_box, 0, 0);
