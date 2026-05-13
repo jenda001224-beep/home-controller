@@ -511,5 +511,5 @@ void loop() {
         go_to_sleep();
     }
 
-    delay(2);
+    delay(5);
 }

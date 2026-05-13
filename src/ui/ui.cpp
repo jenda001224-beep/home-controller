@@ -185,7 +185,10 @@ void UI::_build_tabs() {
     if (tv_content) {
         lv_obj_set_style_pad_all(tv_content, 0, 0);
         lv_obj_set_style_pad_gap(tv_content, 0, 0);
-        lv_obj_set_scroll_dir(tv_content, LV_DIR_NONE);  // tab switch via buttons only
+        // Disable ALL scrolling/gesture detection on the tabview content container.
+        // lv_obj_set_scroll_dir(NONE) alone leaves LV_OBJ_FLAG_SCROLLABLE set,
+        // which causes LVGL's gesture detector to get stuck and never fire click events.
+        lv_obj_clear_flag(tv_content, LV_OBJ_FLAG_SCROLLABLE);
     }
 
     lv_obj_t* tab_bar = lv_tabview_get_tab_btns(_tabview);
@@ -215,9 +218,8 @@ void UI::_build_tabs() {
     auto make_grid = [&](lv_obj_t* tab) -> lv_obj_t* {
         prep_tab(tab);
         lv_obj_t* g = lv_obj_create(tab);
-        // Explicit pixel width — never exceeds the screen edge
-        lv_obj_set_size(g, TFT_WIDTH, LV_SIZE_CONTENT);
-        lv_obj_set_style_max_width(g, TFT_WIDTH, 0);
+        // lv_pct(100) = 100% of the tab's inner width, resolved at layout time
+        lv_obj_set_size(g, lv_pct(100), LV_SIZE_CONTENT);
         lv_obj_set_style_bg_color(g, C_BG, 0);
         lv_obj_set_style_bg_opa(g, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(g, 0, 0);
@@ -281,13 +283,14 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
             lv_obj_set_style_border_width(tile, 1, 0);
         }
 
-        // Icon column
+        // Icon column — NOT clickable so taps pass through to the tile
         lv_obj_t* icon_box = lv_obj_create(tile);
         lv_obj_set_size(icon_box, 52, 58);
         lv_obj_set_style_bg_opa(icon_box, 0, 0);
         lv_obj_set_style_border_width(icon_box, 0, 0);
         lv_obj_set_style_pad_all(icon_box, 0, 0);
         lv_obj_clear_flag(icon_box, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(icon_box, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t* icon = lv_label_create(icon_box);
         lv_label_set_text(icon, entity_icon(entity));
@@ -295,7 +298,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
         lv_obj_set_style_text_color(icon, entity.is_on() ? C_ACCENT : C_TEXT2, 0);
         lv_obj_align(icon, LV_ALIGN_CENTER, 0, 0);
 
-        // Text column (grows to fill)
+        // Text column — NOT clickable so taps pass through to the tile
         lv_obj_t* text_box = lv_obj_create(tile);
         lv_obj_set_size(text_box, LV_SIZE_CONTENT, 58);
         lv_obj_set_flex_grow(text_box, 1);
@@ -303,6 +306,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
         lv_obj_set_style_border_width(text_box, 0, 0);
         lv_obj_set_style_pad_all(text_box, 0, 0);
         lv_obj_clear_flag(text_box, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(text_box, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t* name_lbl = lv_label_create(text_box);
         lv_label_set_text(name_lbl, entity.friendly_name.c_str());
