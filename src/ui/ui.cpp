@@ -476,7 +476,7 @@ void UI::_show_detail(const String& entity_id) {
 
     // Power row
     lv_obj_t* sw_row = lv_obj_create(_detail_panel);
-    lv_obj_set_size(sw_row, TFT_WIDTH - 40, LV_SIZE_CONTENT);
+    lv_obj_set_size(sw_row, TILE_W, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(sw_row, 0, 0);
     lv_obj_set_style_border_width(sw_row, 0, 0);
     lv_obj_set_style_pad_all(sw_row, 0, 0);
@@ -506,21 +506,35 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_clear_flag(_detail_bri_view, LV_OBJ_FLAG_SCROLLABLE);
 
     if (e.supports_brightness) {
-        // Sun icon above pill
-        lv_obj_t* sun = lv_label_create(_detail_bri_view);
-        lv_label_set_text(sun, LV_SYMBOL_IMAGE);
-        lv_obj_set_style_text_font(sun, &lv_font_montserrat_18, 0);
-        lv_obj_set_style_text_color(sun, C_TEXT2, 0);
-        lv_obj_align(sun, LV_ALIGN_TOP_MID, 0, 8);
+        // Colour button above the pill — only if device supports colour.
+        // NOT on the pill itself; touching the pill must only adjust brightness.
+        int pill_top = 8;
+        if (e.supports_color) {
+            lv_obj_t* col_btn = lv_btn_create(_detail_bri_view);
+            lv_obj_set_size(col_btn, TILE_W, 36);
+            lv_obj_align(col_btn, LV_ALIGN_TOP_MID, 0, 8);
+            lv_obj_set_style_bg_color(col_btn, C_BG3, 0);
+            lv_obj_set_style_bg_opa(col_btn, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(col_btn, 12, 0);
+            lv_obj_set_style_border_width(col_btn, 0, 0);
+            lv_obj_set_style_shadow_width(col_btn, 0, 0);
+            lv_obj_add_event_cb(col_btn, _go_color_cb, LV_EVENT_SHORT_CLICKED, this);
+            lv_obj_t* col_lbl = lv_label_create(col_btn);
+            lv_label_set_text(col_lbl, LV_SYMBOL_EDIT "  Colour");
+            lv_obj_set_style_text_color(col_lbl, C_TEXT, 0);
+            lv_obj_set_style_text_font(col_lbl, &lv_font_montserrat_14, 0);
+            lv_obj_align(col_lbl, LV_ALIGN_CENTER, 0, 0);
+            pill_top = 52;   // push pill below the button
+        }
 
-        // The iOS vertical pill
+        // Vertical brightness pill
         const int PILL_W = 80;
-        const int PILL_H = TFT_HEIGHT - 110 - 48 - 20; // ~262px
+        const int PILL_H = (TFT_HEIGHT - 110) - pill_top - 16;
         _detail_pill_h = PILL_H;
 
         _detail_bri_pill = lv_obj_create(_detail_bri_view);
         lv_obj_set_size(_detail_bri_pill, PILL_W, PILL_H);
-        lv_obj_align(_detail_bri_pill, LV_ALIGN_TOP_MID, 0, 40);
+        lv_obj_align(_detail_bri_pill, LV_ALIGN_TOP_MID, 0, pill_top);
         lv_obj_set_style_bg_color(_detail_bri_pill, C_BG2, 0);
         lv_obj_set_style_bg_opa(_detail_bri_pill, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(_detail_bri_pill, PILL_W / 2, 0);
@@ -529,9 +543,9 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_clear_flag(_detail_bri_pill, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(_detail_bri_pill, LV_OBJ_FLAG_CLICKABLE);
 
-        // Fill (orange, from bottom, height = brightness fraction of pill)
+        // Fill (orange, from bottom)
         int fill_h = (int)((int)e.brightness * PILL_H / 255);
-        if (fill_h < PILL_W / 2) fill_h = PILL_W / 2; // min visible cap
+        if (fill_h < PILL_W / 2) fill_h = PILL_W / 2;
         _detail_bri_fill = lv_obj_create(_detail_bri_pill);
         lv_obj_set_size(_detail_bri_fill, PILL_W, fill_h);
         lv_obj_align(_detail_bri_fill, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -541,19 +555,8 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_set_style_border_width(_detail_bri_fill, 0, 0);
         lv_obj_set_style_pad_all(_detail_bri_fill, 0, 0);
 
-        // Drag events on pill
+        // Drag only — NO colour switch on tap (use the button above)
         lv_obj_add_event_cb(_detail_bri_pill, _bri_drag_cb, LV_EVENT_PRESSING, this);
-
-        if (e.supports_color) {
-            lv_obj_t* hint = lv_label_create(_detail_bri_view);
-            lv_label_set_text(hint, LV_SYMBOL_EDIT "  Colour");
-            lv_obj_set_style_text_color(hint, C_TEXT2, 0);
-            lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
-            lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -4);
-            lv_obj_add_flag(hint, LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_add_event_cb(hint, _go_color_cb, LV_EVENT_SHORT_CLICKED, this);
-            lv_obj_add_event_cb(_detail_bri_pill, _go_color_cb, LV_EVENT_SHORT_CLICKED, this);
-        }
     } else if (!e.supports_brightness && e.supports_color) {
         lv_obj_add_flag(_detail_bri_view, LV_OBJ_FLAG_HIDDEN);
     }
@@ -570,7 +573,7 @@ void UI::_show_detail(const String& entity_id) {
         if (e.supports_brightness) lv_obj_add_flag(_detail_col_view, LV_OBJ_FLAG_HIDDEN);
 
         lv_obj_t* back_btn = lv_btn_create(_detail_col_view);
-        lv_obj_set_size(back_btn, TFT_WIDTH - 40, 36);
+        lv_obj_set_size(back_btn, TILE_W, 36);
         lv_obj_align(back_btn, LV_ALIGN_TOP_MID, 0, 0);
         lv_obj_set_style_bg_color(back_btn, C_BG3, 0);
         lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, 0);
@@ -583,7 +586,7 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, 0);
         lv_obj_align(back_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
-        int wheel_sz = TFT_WIDTH - 40;
+        int wheel_sz = TILE_W;
         _detail_colorwheel = lv_colorwheel_create(_detail_col_view, true);
         lv_obj_set_size(_detail_colorwheel, wheel_sz, wheel_sz);
         lv_obj_align(_detail_colorwheel, LV_ALIGN_TOP_MID, 0, 46);

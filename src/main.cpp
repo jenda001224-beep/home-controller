@@ -63,10 +63,13 @@ static void blink_led(int n, int on_ms = 150, int off_ms = 150) {
 // -- Battery + charging --
 
 static float read_battery_v() {
-    // 4-sample average; 11dB attenuation (set in setup) covers 0–3.3V → pin sees 1.5–2.1V ok
+    // Warmup read to settle ADC, then 8-sample average for stability
+    analogReadMilliVolts(PIN_BAT_ADC);
     uint32_t mv = 0;
-    for (int i = 0; i < 4; i++) mv += analogReadMilliVolts(PIN_BAT_ADC);
-    return (mv / 4 / 1000.0f) * 2.0f;   // undo 1:2 voltage divider
+    for (int i = 0; i < 8; i++) mv += analogReadMilliVolts(PIN_BAT_ADC);
+    float v = (mv / 8 / 1000.0f) * 2.0f;   // undo 1:2 voltage divider
+    Serial.printf("[BAT] raw_avg=%lumV  vbat=%.2fV\n", mv/8, v);
+    return v;
 }
 static int read_battery_pct() {
     float v = read_battery_v();
@@ -372,10 +375,11 @@ void setup() {
     pinMode(PIN_BTN1,     INPUT_PULLUP);
     pinMode(PIN_BTN2,     INPUT_PULLUP);
 
-    // Battery ADC: default ESP32 attenuation is 0dB (max ~1.1V input).
-    // LiPo through 1:2 divider = 1.5–2.1V → always clips → always reads 0%.
-    // 11dB extends the range to ~3.3V, which covers the full battery range.
-    analogSetPinAttenuation(PIN_BAT_ADC, ADC_11db);
+    // Battery ADC: set 11dB attenuation on all ADC pins (global is more reliable
+    // than per-pin on ESP32-S3 with Arduino 3.x). Default 0dB clips at ~0.8V;
+    // LiPo through 1:2 divider sits at 1.5–2.1V → always saturates → 0%.
+    analogSetAttenuation(ADC_11db);
+    pinMode(PIN_BAT_ADC, INPUT);
 
     load_settings();
     display_init();
