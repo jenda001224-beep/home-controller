@@ -57,7 +57,8 @@ private:
     void _close_detail();
     void _detail_update(const HAEntity& e);
 
-    static void _tile_clicked(lv_event_t* ev);
+    static void _tile_clicked(lv_event_t* ev);       // tap → toggle on/off
+    static void _tile_long_pressed(lv_event_t* ev);  // hold → open detail
     static void _detail_switch_changed(lv_event_t* ev);
     static void _bri_drag_cb(lv_event_t* ev);   // replaces _brightness_changed
     static void _color_changed(lv_event_t* ev);

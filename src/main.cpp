@@ -62,19 +62,18 @@ static void blink_led(int n, int on_ms = 150, int off_ms = 150) {
 
 // -- Battery + charging --
 
+static float read_battery_v() {
+    // analogReadMilliVolts uses ESP32 ADC calibration for better accuracy
+    uint32_t mv = analogReadMilliVolts(PIN_BAT_ADC);
+    return (mv / 1000.0f) * 2.0f;   // undo 1:2 voltage divider
+}
 static int read_battery_pct() {
-    analogSetPinAttenuation(PIN_BAT_ADC, ADC_11db);
-    int   raw = analogRead(PIN_BAT_ADC);
-    float v   = (raw / 4095.0f) * 3.3f * 2.0f;
+    float v = read_battery_v();
     return constrain((int)((v - 3.0f) / 1.2f * 100.0f), 0, 100);
 }
-// VBUS detection: T-Display S3 Pro has no dedicated VBUS sense GPIO.
-// As a proxy we check if the ADC reads above 4.1 V (typical charged/charging voltage).
+// VBUS proxy: battery reads above ~4.1 V when USB is connected and charging
 static bool is_charging() {
-    analogSetPinAttenuation(PIN_BAT_ADC, ADC_11db);
-    int   raw = analogRead(PIN_BAT_ADC);
-    float v   = (raw / 4095.0f) * 3.3f * 2.0f;
-    return v > 4.10f;
+    return read_battery_v() > 4.10f;
 }
 
 // -- Deep sleep --
@@ -438,6 +437,7 @@ void setup() {
 
     dc.on_ready([&]() {
         ui.build_home();
+        ui.set_battery(read_battery_pct(), is_charging());  // show immediately
         g_sleep_enabled = true;
         g_last_activity = millis();
     });
@@ -467,6 +467,7 @@ void loop() {
         g_demo_pending = false;
         dc.on_ready([&]() {
             ui.build_home();
+            ui.set_battery(read_battery_pct(), is_charging());
             g_sleep_enabled = true;
             g_last_activity = millis();
         });

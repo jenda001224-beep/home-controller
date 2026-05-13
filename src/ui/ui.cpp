@@ -87,6 +87,7 @@ void UI::set_status(const char* msg) {
 // -- Home screen --
 
 void UI::build_home() {
+    _close_detail();   // must happen before _scr_home is deleted
     if (_scr_home) {
         lv_obj_del(_scr_home);
         _scr_home  = nullptr;
@@ -122,7 +123,7 @@ void UI::build_home() {
     lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLLABLE);
 
     _build_tabs();
-    lv_scr_load_anim(_scr_home, LV_SCR_LOAD_ANIM_FADE_IN, 300, 0, false);
+    lv_scr_load_anim(_scr_home, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
 }
 
 void UI::go_home() {
@@ -178,11 +179,13 @@ void UI::_build_tabs() {
     lv_obj_set_style_bg_color(_tabview, C_BG, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_tabview, LV_OPA_COVER, LV_PART_MAIN);
 
-    // Zero out the tabview's inner content panel padding so grids fill edge-to-edge
+    // Zero out the tabview's inner content panel padding so grids fill edge-to-edge.
+    // Also disable horizontal swipe — it was consuming all tile tap events.
     lv_obj_t* tv_content = lv_obj_get_child(_tabview, 1);
     if (tv_content) {
         lv_obj_set_style_pad_all(tv_content, 0, 0);
         lv_obj_set_style_pad_gap(tv_content, 0, 0);
+        lv_obj_set_scroll_dir(tv_content, LV_DIR_NONE);  // tab switch via buttons only
     }
 
     lv_obj_t* tab_bar = lv_tabview_get_tab_btns(_tabview);
@@ -260,10 +263,9 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
 
     // --- List mode: full-width horizontal row ---
     if (list) {
-        int tw = TFT_WIDTH - padding * 2;
-
         lv_obj_t* tile = lv_obj_create(grid);
-        lv_obj_set_size(tile, tw, 62);   // 62px = comfortable finger target
+        // lv_pct(100) = grid inner width — never overflows screen
+        lv_obj_set_size(tile, lv_pct(100), 62);
         style_card(tile);
         lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_style_clip_corner(tile, true, 0);
@@ -305,7 +307,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
         lv_obj_t* name_lbl = lv_label_create(text_box);
         lv_label_set_text(name_lbl, entity.friendly_name.c_str());
         lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_CLIP);
-        lv_obj_set_width(name_lbl, tw - 52 - 40);
+        lv_obj_set_width(name_lbl, TFT_WIDTH - 16 - 52 - 40);  // screen - pad - icon - chevron
         lv_obj_set_style_text_color(name_lbl, C_TEXT, 0);
         lv_obj_set_style_text_font(name_lbl, &lv_font_montserrat_14, 0);
         lv_obj_align(name_lbl, LV_ALIGN_LEFT_MID, 0, -8);
@@ -324,7 +326,8 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
         lv_obj_set_style_pad_right(chev, 12, 0);
 
         lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(tile, _tile_clicked, LV_EVENT_SHORT_CLICKED, this);
+        lv_obj_add_event_cb(tile, _tile_clicked,      LV_EVENT_SHORT_CLICKED, this); // tap = toggle
+        lv_obj_add_event_cb(tile, _tile_long_pressed, LV_EVENT_LONG_PRESSED,  this); // hold = detail
         lv_obj_set_user_data(tile, (void*)entity.entity_id.c_str());
         lv_obj_set_style_bg_color(tile, C_BG3, LV_STATE_PRESSED);
 
@@ -414,8 +417,8 @@ void UI::_show_detail(const String& entity_id) {
     const HAEntity& e = *ep;
     _detail_entity_id = entity_id;
 
-    // Full-screen panel
-    _detail_panel = lv_obj_create(_scr_home);
+    // Full-screen panel on lv_layer_top() — above everything, never clipped
+    _detail_panel = lv_obj_create(lv_layer_top());
     lv_obj_set_size(_detail_panel, TFT_WIDTH, TFT_HEIGHT);
     lv_obj_align(_detail_panel, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_set_style_bg_color(_detail_panel, C_BG, 0);
@@ -611,6 +614,19 @@ void UI::_detail_update(const HAEntity& e) {
 // -- Event callbacks --
 
 void UI::_tile_clicked(lv_event_t* ev) {
+    // Short tap → toggle on/off immediately
+    UI* self        = (UI*)lv_event_get_user_data(ev);
+    lv_obj_t* tile  = lv_event_get_target(ev);
+    const char* eid = (const char*)lv_obj_get_user_data(tile);
+    if (!eid || !self->_dc) return;
+    const HAEntity* ep = self->_dc->find_entity(String(eid));
+    if (!ep) return;
+    if (ep->is_on()) self->_dc->turn_off(String(eid));
+    else             self->_dc->turn_on(String(eid));
+}
+
+void UI::_tile_long_pressed(lv_event_t* ev) {
+    // Long press → open brightness/color detail panel
     UI* self        = (UI*)lv_event_get_user_data(ev);
     lv_obj_t* tile  = lv_event_get_target(ev);
     const char* eid = (const char*)lv_obj_get_user_data(tile);
