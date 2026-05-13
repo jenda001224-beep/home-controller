@@ -3,8 +3,8 @@
 #include "config.h"
 #include <Arduino.h>
 
-static constexpr int TILE_PAD  = 20;                       // visible margin on each side
-static constexpr int TILE_W    = TFT_WIDTH - TILE_PAD * 2; // = 280px (87.5% of 320)
+static constexpr int TILE_PAD  = 28;                       // visible margin on each side
+static constexpr int TILE_W    = TFT_WIDTH - TILE_PAD * 2; // = 264px (82.5% of 320)
 static constexpr int TILE_H    = 68;                        // slightly taller = less squished
 
 static const char* entity_icon(const HAEntity& e) {
