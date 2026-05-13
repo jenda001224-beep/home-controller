@@ -19,7 +19,7 @@ public:
 
 private:
     DirigeraClient* _dc        = nullptr;
-    uint8_t         _grid_cols = 2;
+    uint8_t         _grid_cols = 1;   // 1=list, 2=grid, 3=compact grid
 
     lv_obj_t* _scr_splash    = nullptr;
     lv_obj_t* _scr_home      = nullptr;
@@ -28,15 +28,17 @@ private:
     lv_obj_t* _bat_label     = nullptr;
     std::vector<lv_obj_t*> _grids;
 
-    // Detail panel (fullscreen iOS-style)
+    // Detail panel
     lv_obj_t* _detail_panel      = nullptr;
     lv_obj_t* _detail_title      = nullptr;
     lv_obj_t* _detail_switch     = nullptr;
-    lv_obj_t* _detail_bri_view   = nullptr;   // brightness mode container
-    lv_obj_t* _detail_col_view   = nullptr;   // colour mode container
-    lv_obj_t* _detail_brightness = nullptr;
+    lv_obj_t* _detail_bri_view   = nullptr;
+    lv_obj_t* _detail_col_view   = nullptr;
+    lv_obj_t* _detail_bri_pill   = nullptr;   // the pill container
+    lv_obj_t* _detail_bri_fill   = nullptr;   // fill rectangle inside pill
     lv_obj_t* _detail_colorwheel = nullptr;
     String    _detail_entity_id;
+    int       _detail_pill_h     = 0;         // cached pill height for drag calc
 
     struct TileRef {
         String    entity_id;
@@ -57,7 +59,7 @@ private:
 
     static void _tile_clicked(lv_event_t* ev);
     static void _detail_switch_changed(lv_event_t* ev);
-    static void _brightness_changed(lv_event_t* ev);
+    static void _bri_drag_cb(lv_event_t* ev);   // replaces _brightness_changed
     static void _color_changed(lv_event_t* ev);
     static void _close_detail_cb(lv_event_t* ev);
     static void _go_color_cb(lv_event_t* ev);

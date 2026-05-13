@@ -29,7 +29,7 @@ static Preferences prefs;
 
 static uint8_t  cfg_brightness = 200;
 static uint16_t cfg_sleep_sec  = SLEEP_SEC_DEFAULT;
-static uint8_t  cfg_grid_cols  = 2;
+static uint8_t  cfg_grid_cols  = 1;
 
 static void load_settings() {
     prefs.begin("hc_cfg", true);
