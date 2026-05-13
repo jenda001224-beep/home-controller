@@ -3,6 +3,10 @@
 #include "config.h"
 #include <Arduino.h>
 
+static constexpr int TILE_PAD  = 10;                      // outer margin around tile list
+static constexpr int TILE_W    = TFT_WIDTH - TILE_PAD * 2; // list-mode tile pixel width
+static constexpr int TILE_H    = 62;
+
 static const char* entity_icon(const HAEntity& e) {
     // Use the same reliable symbol per entity type — color shows on/off state
     if (e.type == EntityType::LIGHT)  return LV_SYMBOL_IMAGE;   // picture/light glyph
@@ -204,40 +208,26 @@ void UI::_build_tabs() {
     const auto& areas    = _dc->areas();
     const auto& entities = _dc->entities();
 
-    // Helper: zero out the default padding LVGL adds to tab content panels so
-    // our own grid padding is the only spacing and tile widths are predictable.
-    auto prep_tab = [](lv_obj_t* tab) {
-        lv_obj_set_style_pad_all(tab,    0, 0);
-        lv_obj_set_style_pad_gap(tab,    0, 0);
+    // Configure the tab page itself as the tile container — no intermediate grid wrapper.
+    // This avoids any lv_pct(100) chain through the tabview's internal layout, which
+    // was causing tiles to compute widths wider than the screen in some LVGL 8 scenarios.
+    auto make_grid = [&](lv_obj_t* tab) -> lv_obj_t* {
+        lv_obj_set_style_pad_all(tab,    TILE_PAD, 0);
+        lv_obj_set_style_pad_row(tab,    TILE_PAD, 0);
+        lv_obj_set_style_pad_column(tab, TILE_PAD, 0);
         lv_obj_set_style_border_width(tab, 0, 0);
-        lv_obj_set_style_bg_color(tab, lv_color_black(), 0);
-        lv_obj_set_style_bg_opa(tab,   0, 0);
-        // Lock to vertical scroll only so tiles never drift off to the right
+        lv_obj_set_style_bg_color(tab, C_BG, 0);
+        lv_obj_set_style_bg_opa(tab, LV_OPA_COVER, 0);
         lv_obj_set_scroll_dir(tab, LV_DIR_VER);
         lv_obj_add_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
-    };
-
-    auto make_grid = [&](lv_obj_t* tab) -> lv_obj_t* {
-        prep_tab(tab);
-        lv_obj_t* g = lv_obj_create(tab);
-        lv_obj_set_size(g, lv_pct(100), LV_SIZE_CONTENT);  // fill tab width, adapt to any padding
-        lv_obj_set_style_bg_color(g, C_BG, 0);
-        lv_obj_set_style_bg_opa(g, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(g, 0, 0);
-        // Grid itself must NOT scroll — the tab container scrolls vertically
-        lv_obj_clear_flag(g, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_layout(g, LV_LAYOUT_FLEX);
+        lv_obj_set_layout(tab, LV_LAYOUT_FLEX);
         if (_grid_cols == 1) {
-            lv_obj_set_flex_flow(g, LV_FLEX_FLOW_COLUMN);
-            lv_obj_set_flex_align(g, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+            lv_obj_set_flex_flow(tab, LV_FLEX_FLOW_COLUMN);
         } else {
-            lv_obj_set_flex_flow(g, LV_FLEX_FLOW_ROW_WRAP);
-            lv_obj_set_flex_align(g, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+            lv_obj_set_flex_flow(tab, LV_FLEX_FLOW_ROW_WRAP);
+            lv_obj_set_flex_align(tab, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         }
-        lv_obj_set_style_pad_row(g,    8, 0);
-        lv_obj_set_style_pad_column(g, 8, 0);
-        lv_obj_set_style_pad_all(g,    8, 0);
-        return g;
+        return tab;
     };
 
     if (areas.empty()) {
@@ -261,13 +251,12 @@ void UI::_build_tabs() {
 // -- Tiles --
 
 void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
-    const int padding = 8;
     bool list = (_grid_cols == 1);
 
     // --- List mode: full-width horizontal row ---
     if (list) {
         lv_obj_t* tile = lv_obj_create(grid);
-        lv_obj_set_size(tile, lv_pct(100), 62);   // fill grid inner width (grid has 8px pad all)
+        lv_obj_set_size(tile, TILE_W, TILE_H);   // explicit pixels — no percentage chain
         style_card(tile);
         lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_style_clip_corner(tile, true, 0);
@@ -311,7 +300,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
         lv_obj_t* name_lbl = lv_label_create(text_box);
         lv_label_set_text(name_lbl, entity.friendly_name.c_str());
         lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_CLIP);
-        lv_obj_set_width(name_lbl, lv_pct(100));  // fill text_box; LONG_CLIP handles overflow
+        lv_obj_set_width(name_lbl, TILE_W - 52 - 40);  // tile - icon_box - chevron
         lv_obj_set_style_text_color(name_lbl, C_TEXT, 0);
         lv_obj_set_style_text_font(name_lbl, &lv_font_montserrat_14, 0);
         lv_obj_align(name_lbl, LV_ALIGN_LEFT_MID, 0, -8);
@@ -346,10 +335,10 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
     }
 
     // --- Grid mode (2 or 3 columns) ---
-    const int gap = 8;
+    const int gap = TILE_PAD;
     int tw = (_grid_cols == 3)
-        ? (TFT_WIDTH - padding*2 - gap*2) / 3
-        : (TFT_WIDTH - padding*2 - gap)   / 2;
+        ? (TFT_WIDTH - TILE_PAD*2 - gap*2) / 3
+        : (TFT_WIDTH - TILE_PAD*2 - gap)   / 2;
     const int th_ = (_grid_cols == 3) ? 72 : 80;
 
     lv_obj_t* tile = lv_obj_create(grid);
