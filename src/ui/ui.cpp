@@ -339,9 +339,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
         lv_obj_set_style_pad_right(chev, 12, 0);
 
         lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(tile, _tile_clicked,      LV_EVENT_SHORT_CLICKED, this); // tap = toggle
-        lv_obj_add_event_cb(tile, _tile_long_pressed, LV_EVENT_LONG_PRESSED,  this); // hold = detail
-        lv_obj_set_user_data(tile, (void*)entity.entity_id.c_str());
+        lv_obj_add_event_cb(tile, _tile_clicked, LV_EVENT_SHORT_CLICKED, this); // tap = open detail
         lv_obj_set_style_bg_color(tile, C_BG3, LV_STATE_PRESSED);
 
         TileRef ref;
@@ -627,29 +625,17 @@ void UI::_detail_update(const HAEntity& e) {
 // -- Event callbacks --
 
 void UI::_tile_clicked(lv_event_t* ev) {
-    // Short tap → toggle on/off immediately
+    // Tap → open detail panel; power toggle is the switch inside the panel
     UI* self       = (UI*)lv_event_get_user_data(ev);
     lv_obj_t* tile = lv_event_get_target(ev);
-    if (!self->_dc) return;
-    // Safe lookup via _tiles vector (avoids dangling c_str() from user_data)
     for (const auto& ref : self->_tiles) {
-        if (ref.tile != tile) continue;
-        const HAEntity* ep = self->_dc->find_entity(ref.entity_id);
-        if (!ep) return;
-        if (ep->is_on()) self->_dc->turn_off(ref.entity_id);
-        else             self->_dc->turn_on(ref.entity_id);
-        return;
+        if (ref.tile == tile) { self->_show_detail(ref.entity_id); return; }
     }
 }
 
 void UI::_tile_long_pressed(lv_event_t* ev) {
-    // Long press → open brightness/color detail panel
-    UI* self       = (UI*)lv_event_get_user_data(ev);
-    lv_obj_t* tile = lv_event_get_target(ev);
-    // Safe lookup via _tiles vector
-    for (const auto& ref : self->_tiles) {
-        if (ref.tile == tile) { self->_show_detail(ref.entity_id); return; }
-    }
+    // Unused — kept so the static declaration compiles (no tiles bind this any more)
+    (void)ev;
 }
 
 void UI::_detail_switch_changed(lv_event_t* ev) {

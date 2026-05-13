@@ -63,9 +63,10 @@ static void blink_led(int n, int on_ms = 150, int off_ms = 150) {
 // -- Battery + charging --
 
 static float read_battery_v() {
-    // analogReadMilliVolts uses ESP32 ADC calibration for better accuracy
-    uint32_t mv = analogReadMilliVolts(PIN_BAT_ADC);
-    return (mv / 1000.0f) * 2.0f;   // undo 1:2 voltage divider
+    // 4-sample average; 11dB attenuation (set in setup) covers 0–3.3V → pin sees 1.5–2.1V ok
+    uint32_t mv = 0;
+    for (int i = 0; i < 4; i++) mv += analogReadMilliVolts(PIN_BAT_ADC);
+    return (mv / 4 / 1000.0f) * 2.0f;   // undo 1:2 voltage divider
 }
 static int read_battery_pct() {
     float v = read_battery_v();
@@ -370,6 +371,11 @@ void setup() {
     pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
     pinMode(PIN_BTN1,     INPUT_PULLUP);
     pinMode(PIN_BTN2,     INPUT_PULLUP);
+
+    // Battery ADC: default ESP32 attenuation is 0dB (max ~1.1V input).
+    // LiPo through 1:2 divider = 1.5–2.1V → always clips → always reads 0%.
+    // 11dB extends the range to ~3.3V, which covers the full battery range.
+    analogSetPinAttenuation(PIN_BAT_ADC, ADC_11db);
 
     load_settings();
     display_init();
