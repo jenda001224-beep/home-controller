@@ -180,17 +180,17 @@ void UI::_build_tabs() {
     lv_obj_set_style_bg_opa(_tabview, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(_tabview, C_BG, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_tabview, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_tabview, 0, 0);    // kill any theme-applied tabview padding
 
     // Zero out the tabview's inner content panel padding so grids fill edge-to-edge.
     // Also disable horizontal swipe — it was consuming all tile tap events.
     lv_obj_t* tv_content = lv_obj_get_child(_tabview, 1);
     if (tv_content) {
+        // Zero padding only — do NOT touch scroll flags.
+        // tv_content uses flex ROW to lay out tabs; clearing SCROLLABLE breaks
+        // the tab sizing so pct(100) children get wrong reference width.
         lv_obj_set_style_pad_all(tv_content, 0, 0);
         lv_obj_set_style_pad_gap(tv_content, 0, 0);
-        // Disable ALL scrolling/gesture detection on the tabview content container.
-        // lv_obj_set_scroll_dir(NONE) alone leaves LV_OBJ_FLAG_SCROLLABLE set,
-        // which causes LVGL's gesture detector to get stuck and never fire click events.
-        lv_obj_clear_flag(tv_content, LV_OBJ_FLAG_SCROLLABLE);
     }
 
     lv_obj_t* tab_bar = lv_tabview_get_tab_btns(_tabview);
@@ -220,8 +220,7 @@ void UI::_build_tabs() {
     auto make_grid = [&](lv_obj_t* tab) -> lv_obj_t* {
         prep_tab(tab);
         lv_obj_t* g = lv_obj_create(tab);
-        lv_obj_set_size(g, TFT_WIDTH, LV_SIZE_CONTENT);
-        lv_obj_set_style_max_width(g, TFT_WIDTH, 0);   // hard cap — never wider than screen
+        lv_obj_set_size(g, lv_pct(100), LV_SIZE_CONTENT);  // fill tab width, adapt to any padding
         lv_obj_set_style_bg_color(g, C_BG, 0);
         lv_obj_set_style_bg_opa(g, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(g, 0, 0);
@@ -268,8 +267,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
     // --- List mode: full-width horizontal row ---
     if (list) {
         lv_obj_t* tile = lv_obj_create(grid);
-        // Explicit pixels: screen width minus 8px padding on each side
-        lv_obj_set_size(tile, TFT_WIDTH - 16, 62);
+        lv_obj_set_size(tile, lv_pct(100), 62);   // fill grid inner width (grid has 8px pad all)
         style_card(tile);
         lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_style_clip_corner(tile, true, 0);
@@ -313,7 +311,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
         lv_obj_t* name_lbl = lv_label_create(text_box);
         lv_label_set_text(name_lbl, entity.friendly_name.c_str());
         lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_CLIP);
-        lv_obj_set_width(name_lbl, TFT_WIDTH - 16 - 52 - 40);  // screen - pad - icon - chevron
+        lv_obj_set_width(name_lbl, lv_pct(100));  // fill text_box; LONG_CLIP handles overflow
         lv_obj_set_style_text_color(name_lbl, C_TEXT, 0);
         lv_obj_set_style_text_font(name_lbl, &lv_font_montserrat_14, 0);
         lv_obj_align(name_lbl, LV_ALIGN_LEFT_MID, 0, -8);
