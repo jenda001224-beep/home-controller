@@ -212,9 +212,9 @@ void UI::_build_tabs() {
         lv_obj_set_flex_flow(g, LV_FLEX_FLOW_ROW_WRAP);
         // START alignment so tiles anchor to left edge; centering via padding_all
         lv_obj_set_flex_align(g, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-        lv_obj_set_style_pad_row(g,    10, 0);
-        lv_obj_set_style_pad_column(g, 10, 0);
-        lv_obj_set_style_pad_all(g,    12, 0);
+        lv_obj_set_style_pad_row(g,    8, 0);
+        lv_obj_set_style_pad_column(g, 8, 0);
+        lv_obj_set_style_pad_all(g,    8, 0);
         return g;
     };
 
@@ -239,19 +239,19 @@ void UI::_build_tabs() {
 // -- Tiles --
 
 void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
-    // Tile width depends on grid_cols
-    int gap     = 10;
-    int padding = 12;
+    // Compact tile sizing — 8px padding/gap so tiles fit on the small 320-wide display
+    const int gap     = 8;
+    const int padding = 8;   // matches grid pad_all
     int tw = (_grid_cols == 3)
-        ? (TFT_WIDTH - padding*2 - gap*2) / 3
-        : (TFT_WIDTH - padding*2 - gap) / 2;
-    int th_ = (_grid_cols == 3) ? 84 : 110;
+        ? (TFT_WIDTH - padding*2 - gap*2) / 3   // ~97 px
+        : (TFT_WIDTH - padding*2 - gap)   / 2;  // ~148 px
+    const int th_ = (_grid_cols == 3) ? 72 : 80;
 
     lv_obj_t* tile = lv_obj_create(grid);
     lv_obj_set_size(tile, tw, th_);
     style_card(tile);
     lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(tile, 10, 0);
+    lv_obj_set_style_pad_all(tile, 8, 0);
 
     if (entity.is_on()) {
         lv_obj_set_style_bg_color(tile, C_BG3, 0);
@@ -261,7 +261,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
 
     lv_obj_t* icon = lv_label_create(tile);
     lv_label_set_text(icon, entity_icon(entity));
-    lv_obj_set_style_text_font(icon, (_grid_cols == 3) ? &lv_font_montserrat_18 : &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(icon, entity.is_on() ? C_ACCENT : C_TEXT2, 0);
     lv_obj_align(icon, LV_ALIGN_TOP_LEFT, 0, 0);
 
@@ -269,12 +269,14 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
     lv_label_set_text(name_lbl, entity.friendly_name.c_str());
     lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(name_lbl, lv_pct(100));
-    style_label_primary(name_lbl);
-    lv_obj_align(name_lbl, LV_ALIGN_BOTTOM_LEFT, 0, -16);
+    lv_obj_set_style_text_color(name_lbl, C_TEXT, 0);
+    lv_obj_set_style_text_font(name_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_align(name_lbl, LV_ALIGN_BOTTOM_LEFT, 0, -14);
 
     lv_obj_t* state_lbl = lv_label_create(tile);
     lv_label_set_text(state_lbl, entity.is_on() ? "On" : "Off");
-    style_label_secondary(state_lbl);
+    lv_obj_set_style_text_color(state_lbl, C_TEXT2, 0);
+    lv_obj_set_style_text_font(state_lbl, &lv_font_montserrat_12, 0);
     lv_obj_align(state_lbl, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
     lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
@@ -306,7 +308,7 @@ void UI::on_entity_update(const HAEntity& e) {
     if (_detail_entity_id == e.entity_id && _detail_panel) _detail_update(e);
 }
 
-// -- Detail panel --
+// -- Detail panel (fullscreen iOS-style) --
 
 void UI::_show_detail(const String& entity_id) {
     const HAEntity* ep = _dc->find_entity(entity_id);
@@ -314,44 +316,42 @@ void UI::_show_detail(const String& entity_id) {
     const HAEntity& e = *ep;
     _detail_entity_id = entity_id;
 
-    lv_obj_t* backdrop = lv_obj_create(_scr_home);
-    lv_obj_set_size(backdrop, TFT_WIDTH, TFT_HEIGHT);
-    lv_obj_set_style_bg_color(backdrop, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(backdrop, LV_OPA_50, 0);
-    lv_obj_set_style_border_width(backdrop, 0, 0);
-    lv_obj_align(backdrop, LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_add_flag(backdrop, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(backdrop, _close_detail_cb, LV_EVENT_SHORT_CLICKED, this);
-
-    int panel_h = e.supports_color ? 440 : (e.supports_brightness ? 310 : 220);
+    // Full-screen panel — covers header, tabs, everything
     _detail_panel = lv_obj_create(_scr_home);
-    lv_obj_set_size(_detail_panel, TFT_WIDTH, panel_h);
-    lv_obj_align(_detail_panel, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_color(_detail_panel, C_BG2, 0);
-    lv_obj_set_style_radius(_detail_panel, 20, 0);
+    lv_obj_set_size(_detail_panel, TFT_WIDTH, TFT_HEIGHT);
+    lv_obj_align(_detail_panel, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_bg_color(_detail_panel, C_BG, 0);
+    lv_obj_set_style_bg_opa(_detail_panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(_detail_panel, 0, 0);
     lv_obj_set_style_border_width(_detail_panel, 0, 0);
-    lv_obj_clear_flag(_detail_panel, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_pad_all(_detail_panel, 20, 0);
+    lv_obj_clear_flag(_detail_panel, LV_OBJ_FLAG_SCROLLABLE);
 
+    // Swipe-handle bar at top
     lv_obj_t* handle = lv_obj_create(_detail_panel);
-    lv_obj_set_size(handle, 40, 4);
+    lv_obj_set_size(handle, 48, 5);
     lv_obj_align(handle, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(handle, C_BG3, 0);
+    lv_obj_set_style_bg_opa(handle, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(handle, 0, 0);
-    lv_obj_set_style_radius(handle, 4, 0);
+    lv_obj_set_style_radius(handle, 3, 0);
+    lv_obj_add_flag(handle, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(handle, _close_detail_cb, LV_EVENT_SHORT_CLICKED, this);
 
+    // Device name
     _detail_title = lv_label_create(_detail_panel);
     lv_label_set_text(_detail_title, e.friendly_name.c_str());
-    lv_obj_set_style_text_font(_detail_title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(_detail_title, &lv_font_montserrat_22, 0);
     lv_obj_set_style_text_color(_detail_title, C_TEXT, 0);
-    lv_obj_align(_detail_title, LV_ALIGN_TOP_MID, 0, 16);
+    lv_obj_align(_detail_title, LV_ALIGN_TOP_MID, 0, 18);
 
+    // Power row — icon + toggle switch, centered
     lv_obj_t* sw_row = lv_obj_create(_detail_panel);
     lv_obj_set_size(sw_row, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(sw_row, 0, 0);
     lv_obj_set_style_border_width(sw_row, 0, 0);
     lv_obj_set_style_pad_all(sw_row, 0, 0);
-    lv_obj_align(sw_row, LV_ALIGN_TOP_LEFT, 0, 52);
+    lv_obj_align(sw_row, LV_ALIGN_TOP_LEFT, 0, 60);
     lv_obj_set_layout(sw_row, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(sw_row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(sw_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -366,53 +366,100 @@ void UI::_show_detail(const String& entity_id) {
     if (e.is_on()) lv_obj_add_state(_detail_switch, LV_STATE_CHECKED);
     lv_obj_add_event_cb(_detail_switch, _detail_switch_changed, LV_EVENT_VALUE_CHANGED, this);
 
-    int next_y = 100;
+    // ---- Brightness view (default) ----
+    _detail_bri_view = lv_obj_create(_detail_panel);
+    lv_obj_set_size(_detail_bri_view, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(_detail_bri_view, 0, 0);
+    lv_obj_set_style_border_width(_detail_bri_view, 0, 0);
+    lv_obj_set_style_pad_all(_detail_bri_view, 0, 0);
+    lv_obj_align(_detail_bri_view, LV_ALIGN_TOP_LEFT, 0, 116);
+    lv_obj_clear_flag(_detail_bri_view, LV_OBJ_FLAG_SCROLLABLE);
 
     if (e.supports_brightness) {
-        lv_obj_t* br_lbl = lv_label_create(_detail_panel);
-        lv_label_set_text(br_lbl, LV_SYMBOL_IMAGE "  Brightness");
-        lv_obj_set_style_text_color(br_lbl, C_TEXT2, 0);
-        lv_obj_set_style_text_font(br_lbl, &lv_font_montserrat_14, 0);
-        lv_obj_align(br_lbl, LV_ALIGN_TOP_LEFT, 0, next_y);
+        lv_obj_t* bri_icon = lv_label_create(_detail_bri_view);
+        lv_label_set_text(bri_icon, LV_SYMBOL_IMAGE "  Brightness");
+        lv_obj_set_style_text_color(bri_icon, C_TEXT2, 0);
+        lv_obj_set_style_text_font(bri_icon, &lv_font_montserrat_14, 0);
+        lv_obj_align(bri_icon, LV_ALIGN_TOP_MID, 0, 0);
 
-        _detail_brightness = lv_slider_create(_detail_panel);
-        lv_obj_set_size(_detail_brightness, lv_pct(100), 28);
+        // Large iOS-style pill slider — no knob, thick, rounded
+        _detail_brightness = lv_slider_create(_detail_bri_view);
+        lv_obj_set_size(_detail_brightness, TFT_WIDTH - 40, 60);
+        lv_obj_align(_detail_brightness, LV_ALIGN_TOP_MID, 0, 26);
         lv_slider_set_range(_detail_brightness, 1, 255);
         lv_slider_set_value(_detail_brightness, e.brightness, LV_ANIM_OFF);
-        lv_obj_align(_detail_brightness, LV_ALIGN_TOP_MID, 0, next_y + 24);
+        lv_obj_set_style_bg_color(_detail_brightness, C_BG3,   LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_detail_brightness, LV_OPA_COVER, LV_PART_MAIN);
         lv_obj_set_style_bg_color(_detail_brightness, C_ACCENT, LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(_detail_brightness, C_BG3,    LV_PART_MAIN);
-        lv_obj_set_style_bg_color(_detail_brightness, C_TEXT,   LV_PART_KNOB);
-        lv_obj_set_style_radius(_detail_brightness, 14, LV_PART_MAIN);
-        lv_obj_set_style_radius(_detail_brightness, 14, LV_PART_INDICATOR);
-        lv_obj_set_style_pad_all(_detail_brightness, 10, LV_PART_KNOB);
+        lv_obj_set_style_bg_opa(_detail_brightness, LV_OPA_COVER, LV_PART_INDICATOR);
+        lv_obj_set_style_radius(_detail_brightness, 30, LV_PART_MAIN);
+        lv_obj_set_style_radius(_detail_brightness, 30, LV_PART_INDICATOR);
+        lv_obj_set_style_pad_all(_detail_brightness, 0, LV_PART_MAIN);
+        // Invisible knob — dragging anywhere on the bar works fine
+        lv_obj_set_style_opa(_detail_brightness, LV_OPA_TRANSP, LV_PART_KNOB);
+        lv_obj_set_style_pad_all(_detail_brightness, 0, LV_PART_KNOB);
         lv_obj_add_event_cb(_detail_brightness, _brightness_changed, LV_EVENT_VALUE_CHANGED, this);
-        next_y += 80;
+
+        if (e.supports_color) {
+            // "Tap for colour →" hint — tapping the slider switches to colour mode
+            lv_obj_t* hint = lv_label_create(_detail_bri_view);
+            lv_label_set_text(hint, LV_SYMBOL_EDIT "  Tap for colour");
+            lv_obj_set_style_text_color(hint, C_TEXT2, 0);
+            lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
+            lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 100);
+            // Short-click on slider switches to colour mode
+            lv_obj_add_event_cb(_detail_brightness, _go_color_cb, LV_EVENT_SHORT_CLICKED, this);
+        }
+    } else if (!e.supports_brightness && e.supports_color) {
+        // No brightness — go straight to colour mode
+        lv_obj_add_flag(_detail_bri_view, LV_OBJ_FLAG_HIDDEN);
     }
 
+    // ---- Colour view (hidden until user taps brightness bar) ----
     if (e.supports_color) {
-        lv_obj_t* col_lbl = lv_label_create(_detail_panel);
-        lv_label_set_text(col_lbl, LV_SYMBOL_EDIT "  Colour");
-        lv_obj_set_style_text_color(col_lbl, C_TEXT2, 0);
-        lv_obj_set_style_text_font(col_lbl, &lv_font_montserrat_14, 0);
-        lv_obj_align(col_lbl, LV_ALIGN_TOP_LEFT, 0, next_y);
+        _detail_col_view = lv_obj_create(_detail_panel);
+        lv_obj_set_size(_detail_col_view, lv_pct(100), LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_opa(_detail_col_view, 0, 0);
+        lv_obj_set_style_border_width(_detail_col_view, 0, 0);
+        lv_obj_set_style_pad_all(_detail_col_view, 0, 0);
+        lv_obj_align(_detail_col_view, LV_ALIGN_TOP_LEFT, 0, 116);
+        lv_obj_clear_flag(_detail_col_view, LV_OBJ_FLAG_SCROLLABLE);
+        // Hidden unless device has no brightness (in which case shown directly)
+        if (e.supports_brightness) lv_obj_add_flag(_detail_col_view, LV_OBJ_FLAG_HIDDEN);
 
-        int wheel_size = TFT_WIDTH - 80;
-        _detail_colorwheel = lv_colorwheel_create(_detail_panel, true);
-        lv_obj_set_size(_detail_colorwheel, wheel_size, wheel_size);
-        lv_obj_align(_detail_colorwheel, LV_ALIGN_TOP_MID, 0, next_y + 24);
+        lv_obj_t* back_btn = lv_btn_create(_detail_col_view);
+        lv_obj_set_size(back_btn, lv_pct(100), 36);
+        lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 0, 0);
+        lv_obj_set_style_bg_color(back_btn, C_BG3, 0);
+        lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(back_btn, 10, 0);
+        lv_obj_set_style_shadow_width(back_btn, 0, 0);
+        lv_obj_add_event_cb(back_btn, _go_bri_cb, LV_EVENT_SHORT_CLICKED, this);
+        lv_obj_t* back_lbl = lv_label_create(back_btn);
+        lv_label_set_text(back_lbl, LV_SYMBOL_LEFT "  Brightness");
+        lv_obj_set_style_text_color(back_lbl, C_TEXT, 0);
+        lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, 0);
+        lv_obj_align(back_lbl, LV_ALIGN_LEFT_MID, 0, 0);
+
+        int wheel_sz = TFT_WIDTH - 40;
+        _detail_colorwheel = lv_colorwheel_create(_detail_col_view, true);
+        lv_obj_set_size(_detail_colorwheel, wheel_sz, wheel_sz);
+        lv_obj_align(_detail_colorwheel, LV_ALIGN_TOP_MID, 0, 46);
         lv_colorwheel_set_rgb(_detail_colorwheel, lv_color_make(e.r, e.g, e.b));
         lv_obj_add_event_cb(_detail_colorwheel, _color_changed, LV_EVENT_VALUE_CHANGED, this);
     }
+
+    // Close on tap outside the controls (tap top dark area)
+    lv_obj_add_flag(_detail_panel, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(_detail_panel, _close_detail_cb, LV_EVENT_SHORT_CLICKED, this);
 }
 
 void UI::_close_detail() {
     if (!_detail_panel) return;
-    lv_obj_t* parent = lv_obj_get_parent(_detail_panel);
-    uint32_t cnt = lv_obj_get_child_cnt(parent);
-    if (cnt >= 2) lv_obj_del(lv_obj_get_child(parent, cnt - 2));
     lv_obj_del(_detail_panel);
     _detail_panel       = nullptr;
+    _detail_bri_view    = nullptr;
+    _detail_col_view    = nullptr;
     _detail_brightness  = nullptr;
     _detail_colorwheel  = nullptr;
     _detail_entity_id   = "";
@@ -469,4 +516,16 @@ void UI::_color_changed(lv_event_t* ev) {
 
 void UI::_close_detail_cb(lv_event_t* ev) {
     ((UI*)lv_event_get_user_data(ev))->_close_detail();
+}
+
+void UI::_go_color_cb(lv_event_t* ev) {
+    UI* self = (UI*)lv_event_get_user_data(ev);
+    if (self->_detail_bri_view) lv_obj_add_flag(self->_detail_bri_view, LV_OBJ_FLAG_HIDDEN);
+    if (self->_detail_col_view) lv_obj_clear_flag(self->_detail_col_view, LV_OBJ_FLAG_HIDDEN);
+}
+
+void UI::_go_bri_cb(lv_event_t* ev) {
+    UI* self = (UI*)lv_event_get_user_data(ev);
+    if (self->_detail_col_view) lv_obj_add_flag(self->_detail_col_view, LV_OBJ_FLAG_HIDDEN);
+    if (self->_detail_bri_view) lv_obj_clear_flag(self->_detail_bri_view, LV_OBJ_FLAG_HIDDEN);
 }

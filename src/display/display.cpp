@@ -39,8 +39,8 @@ public:
             cfg.panel_height     = TFT_HEIGHT;
             cfg.offset_rotation  = 0;
             cfg.readable         = false;
-            cfg.invert           = false;
-            cfg.rgb_order        = true;    // ST7796 default is BGR; flip to RGB so LVGL colors are correct
+            cfg.invert           = true;    // T-Display S3 Pro ST7796 needs INVON
+            cfg.rgb_order        = false;   // ST7796 BGR mode (hardware default)
             cfg.dlen_16bit       = false;
             cfg.bus_shared       = true;
             _panel.config(cfg);

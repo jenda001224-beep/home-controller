@@ -14,7 +14,7 @@ public:
     void go_home();
 
     void set_battery(int pct, bool charging = false);
-    void set_grid_cols(uint8_t cols);   // 2 or 3, takes effect on next build_home()
+    void set_grid_cols(uint8_t cols);
     uint8_t grid_cols() const { return _grid_cols; }
 
 private:
@@ -28,10 +28,12 @@ private:
     lv_obj_t* _bat_label     = nullptr;
     std::vector<lv_obj_t*> _grids;
 
-    // Detail panel
+    // Detail panel (fullscreen iOS-style)
     lv_obj_t* _detail_panel      = nullptr;
     lv_obj_t* _detail_title      = nullptr;
     lv_obj_t* _detail_switch     = nullptr;
+    lv_obj_t* _detail_bri_view   = nullptr;   // brightness mode container
+    lv_obj_t* _detail_col_view   = nullptr;   // colour mode container
     lv_obj_t* _detail_brightness = nullptr;
     lv_obj_t* _detail_colorwheel = nullptr;
     String    _detail_entity_id;
@@ -58,4 +60,6 @@ private:
     static void _brightness_changed(lv_event_t* ev);
     static void _color_changed(lv_event_t* ev);
     static void _close_detail_cb(lv_event_t* ev);
+    static void _go_color_cb(lv_event_t* ev);
+    static void _go_bri_cb(lv_event_t* ev);
 };
