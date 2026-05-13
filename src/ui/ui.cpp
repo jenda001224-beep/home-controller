@@ -74,6 +74,13 @@ void UI::show_splash() {
     lv_obj_align(_splash_status, LV_ALIGN_CENTER, 0, 20);
     lv_label_set_long_mode(_splash_status, LV_LABEL_LONG_WRAP);
 
+    // Version
+    lv_obj_t* ver = lv_label_create(_scr_splash);
+    lv_label_set_text(ver, APP_VERSION);
+    lv_obj_set_style_text_color(ver, C_BG3, 0);
+    lv_obj_set_style_text_font(ver, &lv_font_montserrat_12, 0);
+    lv_obj_align(ver, LV_ALIGN_BOTTOM_MID, 0, -12);
+
     // Spinner — orange on gray
     lv_obj_t* spin = lv_spinner_create(_scr_splash, 1000, 60);
     lv_obj_set_size(spin, 36, 36);
