@@ -143,7 +143,9 @@ void UI::set_battery(int pct, bool charging) {
         lv_obj_set_style_text_color(_bat_label, C_GREEN, 0);
     } else {
         snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
-        lv_obj_set_style_text_color(_bat_label, C_TEXT2, 0);
+        // Red below 20%, orange below 40%, gray otherwise
+        lv_color_t col = (pct < 20) ? C_RED : (pct < 40) ? C_ACCENT : C_TEXT2;
+        lv_obj_set_style_text_color(_bat_label, col, 0);
     }
     lv_label_set_text(_bat_label, buf);
 }
@@ -218,8 +220,8 @@ void UI::_build_tabs() {
     auto make_grid = [&](lv_obj_t* tab) -> lv_obj_t* {
         prep_tab(tab);
         lv_obj_t* g = lv_obj_create(tab);
-        // lv_pct(100) = 100% of the tab's inner width, resolved at layout time
-        lv_obj_set_size(g, lv_pct(100), LV_SIZE_CONTENT);
+        lv_obj_set_size(g, TFT_WIDTH, LV_SIZE_CONTENT);
+        lv_obj_set_style_max_width(g, TFT_WIDTH, 0);   // hard cap — never wider than screen
         lv_obj_set_style_bg_color(g, C_BG, 0);
         lv_obj_set_style_bg_opa(g, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(g, 0, 0);
@@ -266,8 +268,8 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
     // --- List mode: full-width horizontal row ---
     if (list) {
         lv_obj_t* tile = lv_obj_create(grid);
-        // lv_pct(100) = grid inner width — never overflows screen
-        lv_obj_set_size(tile, lv_pct(100), 62);
+        // Explicit pixels: screen width minus 8px padding on each side
+        lv_obj_set_size(tile, TFT_WIDTH - 16, 62);
         style_card(tile);
         lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_style_clip_corner(tile, true, 0);
