@@ -35,7 +35,7 @@ static void load_settings() {
     prefs.begin("hc_cfg", true);
     cfg_brightness = prefs.getUChar("bri",    200);
     cfg_sleep_sec  = prefs.getUShort("sleep", SLEEP_SEC_DEFAULT);
-    cfg_grid_cols  = prefs.getUChar("grid",   1);   // default: list layout
+    cfg_grid_cols  = 1;   // always list — ignore any old NVS value
     prefs.end();
 }
 static void save_settings() {
@@ -510,5 +510,5 @@ void loop() {
         go_to_sleep();
     }
 
-    delay(5);
+    delay(2);
 }
