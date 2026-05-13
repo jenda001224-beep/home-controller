@@ -161,9 +161,9 @@ void display_init() {
     lv_indev_drv_init(&indev_drv);
     indev_drv.type            = LV_INDEV_TYPE_POINTER;
     indev_drv.read_cb         = lvgl_touch_read;
-    indev_drv.scroll_limit    = 16;   // px before scroll mode activates (more = easier tapping)
+    indev_drv.scroll_limit    = 20;   // px before scroll mode activates (more = easier tapping)
     indev_drv.scroll_throw    = 5;
-    indev_drv.long_press_time = 600;  // ms
+    indev_drv.long_press_time = 400;  // ms — snappier long-press for detail panel
     lv_indev_drv_register(&indev_drv);
     // Speed up touch polling to ~60 Hz (default LVGL timer is 30 ms)
     if (indev_drv.read_timer) lv_timer_set_period(indev_drv.read_timer, 16);

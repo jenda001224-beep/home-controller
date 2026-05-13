@@ -6,6 +6,7 @@
 static constexpr int TILE_PAD  = 60;                       // visible margin on each side
 static constexpr int TILE_W    = TFT_WIDTH - TILE_PAD * 2; // = 200px (62.5% of 320)
 static constexpr int TILE_H    = 68;                        // slightly taller = less squished
+static constexpr int TILE_GAP  = 8;                        // small gap between tile rows
 
 static const char* entity_icon(const HAEntity& e) {
     // Use the same reliable symbol per entity type — color shows on/off state
@@ -155,7 +156,7 @@ void UI::set_battery(int pct, bool charging) {
     } else {
         snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
         // Red below 20%, orange below 40%, gray otherwise
-        lv_color_t col = (pct < 20) ? C_RED : (pct < 40) ? C_ACCENT : C_TEXT2;
+        lv_color_t col = (pct < 20) ? C_RED : (pct < 40) ? C_ACCENT : C_TEXT;
         lv_obj_set_style_text_color(_bat_label, col, 0);
     }
     lv_label_set_text(_bat_label, buf);
@@ -180,9 +181,9 @@ void UI::_build_tabs() {
 
     _bat_label = lv_label_create(header);
     lv_label_set_text(_bat_label, LV_SYMBOL_BATTERY_FULL " --");
-    lv_obj_set_style_text_font(_bat_label, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(_bat_label, C_TEXT2, 0);
-    lv_obj_align(_bat_label, LV_ALIGN_RIGHT_MID, -12, 0);
+    lv_obj_set_style_text_font(_bat_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(_bat_label, C_TEXT, 0);
+    lv_obj_align(_bat_label, LV_ALIGN_RIGHT_MID, -TILE_PAD, 0);  // align with tile right edge
 
     _tabview = lv_tabview_create(_scr_home, LV_DIR_TOP, 38);
     lv_obj_set_pos(_tabview, 0, 48);
@@ -215,26 +216,38 @@ void UI::_build_tabs() {
     const auto& areas    = _dc->areas();
     const auto& entities = _dc->entities();
 
-    // Configure the tab page itself as the tile container — no intermediate grid wrapper.
-    // This avoids any lv_pct(100) chain through the tabview's internal layout, which
-    // was causing tiles to compute widths wider than the screen in some LVGL 8 scenarios.
+    // Two-level layout:
+    //   tab page  — NON-scrollable, so horizontal swipes fall through to tv_content → tab switch
+    //   inner grid — fills tab page, handles vertical scroll; tiles live here
+    // This fixes: (1) tile tap/long-press blocked by scroll detection on parent,
+    //             (2) horizontal swipe swallowed before reaching tv_content.
     auto make_grid = [&](lv_obj_t* tab) -> lv_obj_t* {
-        lv_obj_set_style_pad_all(tab,    TILE_PAD, 0);
-        lv_obj_set_style_pad_row(tab,    TILE_PAD, 0);
-        lv_obj_set_style_pad_column(tab, TILE_PAD, 0);
+        // Tab page: transparent, non-scrollable wrapper
+        lv_obj_set_style_pad_all(tab, 0, 0);
         lv_obj_set_style_border_width(tab, 0, 0);
         lv_obj_set_style_bg_color(tab, C_BG, 0);
         lv_obj_set_style_bg_opa(tab, LV_OPA_COVER, 0);
-        lv_obj_set_scroll_dir(tab, LV_DIR_VER);
-        lv_obj_add_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_layout(tab, LV_LAYOUT_FLEX);
+        lv_obj_clear_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
+
+        // Inner grid: fills tab, owns vertical scroll and tile layout
+        lv_obj_t* g = lv_obj_create(tab);
+        lv_obj_set_size(g, lv_pct(100), lv_pct(100));
+        lv_obj_set_style_pad_all(g,    TILE_PAD, 0);  // outer horizontal/vertical margin
+        lv_obj_set_style_pad_row(g,    TILE_GAP, 0);  // small row gap between tiles
+        lv_obj_set_style_pad_column(g, TILE_GAP, 0);
+        lv_obj_set_style_border_width(g, 0, 0);
+        lv_obj_set_style_bg_color(g, C_BG, 0);
+        lv_obj_set_style_bg_opa(g, LV_OPA_COVER, 0);
+        lv_obj_set_scroll_dir(g, LV_DIR_VER);
+        lv_obj_add_flag(g, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_layout(g, LV_LAYOUT_FLEX);
         if (_grid_cols == 1) {
-            lv_obj_set_flex_flow(tab, LV_FLEX_FLOW_COLUMN);
+            lv_obj_set_flex_flow(g, LV_FLEX_FLOW_COLUMN);
         } else {
-            lv_obj_set_flex_flow(tab, LV_FLEX_FLOW_ROW_WRAP);
-            lv_obj_set_flex_align(tab, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+            lv_obj_set_flex_flow(g, LV_FLEX_FLOW_ROW_WRAP);
+            lv_obj_set_flex_align(g, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         }
-        return tab;
+        return g;
     };
 
     if (areas.empty()) {
@@ -615,22 +628,28 @@ void UI::_detail_update(const HAEntity& e) {
 
 void UI::_tile_clicked(lv_event_t* ev) {
     // Short tap → toggle on/off immediately
-    UI* self        = (UI*)lv_event_get_user_data(ev);
-    lv_obj_t* tile  = lv_event_get_target(ev);
-    const char* eid = (const char*)lv_obj_get_user_data(tile);
-    if (!eid || !self->_dc) return;
-    const HAEntity* ep = self->_dc->find_entity(String(eid));
-    if (!ep) return;
-    if (ep->is_on()) self->_dc->turn_off(String(eid));
-    else             self->_dc->turn_on(String(eid));
+    UI* self       = (UI*)lv_event_get_user_data(ev);
+    lv_obj_t* tile = lv_event_get_target(ev);
+    if (!self->_dc) return;
+    // Safe lookup via _tiles vector (avoids dangling c_str() from user_data)
+    for (const auto& ref : self->_tiles) {
+        if (ref.tile != tile) continue;
+        const HAEntity* ep = self->_dc->find_entity(ref.entity_id);
+        if (!ep) return;
+        if (ep->is_on()) self->_dc->turn_off(ref.entity_id);
+        else             self->_dc->turn_on(ref.entity_id);
+        return;
+    }
 }
 
 void UI::_tile_long_pressed(lv_event_t* ev) {
     // Long press → open brightness/color detail panel
-    UI* self        = (UI*)lv_event_get_user_data(ev);
-    lv_obj_t* tile  = lv_event_get_target(ev);
-    const char* eid = (const char*)lv_obj_get_user_data(tile);
-    if (eid) self->_show_detail(String(eid));
+    UI* self       = (UI*)lv_event_get_user_data(ev);
+    lv_obj_t* tile = lv_event_get_target(ev);
+    // Safe lookup via _tiles vector
+    for (const auto& ref : self->_tiles) {
+        if (ref.tile == tile) { self->_show_detail(ref.entity_id); return; }
+    }
 }
 
 void UI::_detail_switch_changed(lv_event_t* ev) {
