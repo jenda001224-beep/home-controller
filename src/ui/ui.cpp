@@ -77,7 +77,7 @@ void UI::show_splash() {
     // Version
     lv_obj_t* ver = lv_label_create(_scr_splash);
     lv_label_set_text(ver, APP_VERSION);
-    lv_obj_set_style_text_color(ver, C_BG3, 0);
+    lv_obj_set_style_text_color(ver, C_TEXT2, 0);
     lv_obj_set_style_text_font(ver, &lv_font_montserrat_12, 0);
     lv_obj_align(ver, LV_ALIGN_BOTTOM_MID, 0, -12);
 
