@@ -114,6 +114,7 @@ void display_init() {
     lcd.init();
     lcd.setRotation(0);
     lcd.setBrightness(200);
+    lcd.fillScreen(0x0000);   // pre-clear to black before LVGL takes over
 
     // Touch — CST226SE via SensorsLib
     // IMPORTANT: setPins() BEFORE begin(), and begin() takes (Wire, I2C_ADDR, sda, scl)

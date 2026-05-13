@@ -30,6 +30,17 @@ void UI::show_splash() {
     lv_obj_set_style_bg_opa(_scr_splash, LV_OPA_COVER, 0);
     lv_scr_load(_scr_splash);
 
+    // Explicit background rectangle — screen bg_color alone is unreliable in LVGL 8
+    lv_obj_t* bg = lv_obj_create(_scr_splash);
+    lv_obj_set_size(bg, TFT_WIDTH, TFT_HEIGHT);
+    lv_obj_align(bg, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_bg_color(bg, C_BG, 0);
+    lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(bg, 0, 0);
+    lv_obj_set_style_radius(bg, 0, 0);
+    lv_obj_set_style_pad_all(bg, 0, 0);
+    lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLLABLE);
+
     // Large home icon — orange, above the name
     lv_obj_t* icon = lv_label_create(_scr_splash);
     lv_label_set_text(icon, LV_SYMBOL_HOME);
@@ -92,6 +103,18 @@ void UI::build_home() {
     lv_obj_set_style_bg_opa(_scr_home, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(_scr_home, 0, 0);
     lv_obj_clear_flag(_scr_home, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Explicit background rectangle — screen bg_color alone is unreliable in LVGL 8
+    lv_obj_t* bg = lv_obj_create(_scr_home);
+    lv_obj_set_size(bg, TFT_WIDTH, TFT_HEIGHT);
+    lv_obj_align(bg, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_bg_color(bg, C_BG, 0);
+    lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(bg, 0, 0);
+    lv_obj_set_style_radius(bg, 0, 0);
+    lv_obj_set_style_pad_all(bg, 0, 0);
+    lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLLABLE);
+
     _build_tabs();
     lv_scr_load_anim(_scr_home, LV_SCR_LOAD_ANIM_FADE_IN, 300, 0, false);
 }
