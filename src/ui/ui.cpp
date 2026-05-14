@@ -150,6 +150,12 @@ void UI::set_grid_cols(uint8_t cols) {
 void UI::set_battery(int pct, bool charging, float v) {
     if (!_bat_label) return;
     char buf[28];
+    // < 0.5 V = no LiPo connected (device running on USB only)
+    if (v >= 0 && v < 0.5f) {
+        lv_label_set_text(_bat_label, LV_SYMBOL_USB " USB");
+        lv_obj_set_style_text_color(_bat_label, C_TEXT2, 0);
+        return;
+    }
     if (charging) {
         if (v >= 0) snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %.1fV", v);
         else        snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %d%%", pct);
@@ -584,7 +590,10 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_align(_detail_colorwheel, LV_ALIGN_TOP_MID, 0, 50);
         lv_obj_set_style_arc_width(_detail_colorwheel, 32, LV_PART_MAIN);  // thick hue ring
         lv_colorwheel_set_rgb(_detail_colorwheel, lv_color_make(e.r, e.g, e.b));
+        // VALUE_CHANGED fires on every pixel of drag — throttle HTTP to 500 ms.
+        // RELEASED sends a final accurate value when the finger lifts.
         lv_obj_add_event_cb(_detail_colorwheel, _color_changed, LV_EVENT_VALUE_CHANGED, this);
+        lv_obj_add_event_cb(_detail_colorwheel, _color_changed, LV_EVENT_RELEASED,       this);
     }
 
     // ---- Toggle button — created LAST so it is highest in z-order ----
@@ -602,7 +611,9 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_set_style_text_color(sw_lbl, e.is_on() ? lv_color_black() : C_TEXT2, 0);
     lv_obj_set_style_text_font(sw_lbl, &lv_font_montserrat_18, 0);
     lv_obj_align(sw_lbl, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(_detail_switch, _detail_switch_changed, LV_EVENT_SHORT_CLICKED, this);
+    // Use RELEASED (not SHORT_CLICKED) — fires unconditionally on finger-up,
+    // regardless of how long the press lasted or what else was happening.
+    lv_obj_add_event_cb(_detail_switch, _detail_switch_changed, LV_EVENT_RELEASED, this);
 }
 
 void UI::_close_detail() {
@@ -683,11 +694,17 @@ void UI::_color_changed(lv_event_t* ev) {
     UI* self     = (UI*)lv_event_get_user_data(ev);
     lv_obj_t* cw = lv_event_get_target(ev);
     lv_color_t c = lv_colorwheel_get_rgb(cw);
-    // Convert to 32-bit to safely extract R/G/B bytes regardless of LV_COLOR_16_SWAP
     lv_color32_t c32;
     c32.full = lv_color_to32(c);
-    if (self->_dc && !self->_detail_entity_id.isEmpty())
-        self->_dc->set_color(self->_detail_entity_id, c32.ch.red, c32.ch.green, c32.ch.blue);
+    bool released = (lv_event_get_code(ev) == LV_EVENT_RELEASED);
+    uint32_t now  = millis();
+    // Send on finger release OR at most every 500 ms while dragging
+    if (released || now - self->_col_last_send_ms >= 500) {
+        self->_col_last_send_ms = now;
+        if (self->_dc && !self->_detail_entity_id.isEmpty())
+            self->_dc->set_color(self->_detail_entity_id,
+                                 c32.ch.red, c32.ch.green, c32.ch.blue);
+    }
 }
 
 void UI::_close_detail_cb(lv_event_t* ev) {

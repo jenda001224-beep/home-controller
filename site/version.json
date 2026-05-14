@@ -1,9 +1,9 @@
 {
-  "version": "v5.31",
+  "version": "v5.32",
   "changes": [
-    "On/Off button — reaguje okamžitě (optimistic update)",
-    "Color wheel — menší, nezakrývá tlačítko On/Off",
-    "Battery — zobrazuje napětí (3.8V 65%) pro diagnostiku",
-    "Check for Updates — lepší chyby, vyšší timeout"
+    "HTTP PATCH na pozadí (FreeRTOS) — LVGL se nikdy nezasekne",
+    "Color wheel — reaguje plynule, posílá na uvolnění prstu",
+    "On/Off — reaguje na RELEASED, nepotřebuje přesné načasování",
+    "Baterie — zobrazí USB když není LiPo připojeno"
   ]
 }

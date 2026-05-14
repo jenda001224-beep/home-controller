@@ -2,6 +2,9 @@
 #include <Arduino.h>
 #include <vector>
 #include <functional>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
 #include "../ha/entity.h"
 
 using EntityUpdateCb = std::function<void(const HAEntity&)>;
@@ -47,7 +50,18 @@ private:
     EntityUpdateCb _on_update;
     ReadyCb        _on_ready;
 
-    bool _patch(const String& device_id, const String& json_body);
-    void _fetch_devices();
+    // Async PATCH via background FreeRTOS task —
+    // PATCH calls are non-blocking; main loop / LVGL never stalls waiting for HTTP.
+    struct PatchJob {
+        char url[200];   // "https://x.x.x.x:8443/v1/devices/<uuid>" ≈ 80 chars
+        char body[80];   // largest body: colorHue+colorSaturation ≈ 65 chars
+    };
+    static QueueHandle_t  s_patch_q;
+    static TaskHandle_t   s_patch_task;
+    static void _patch_worker(void* arg);
+    void _ensure_patch_task();
+
+    bool _patch(const String& device_id, const String& json_body);  // now async
+    void _fetch_devices();   // synchronous GET (polling, every 5 s)
     void _set_power(const String& id, bool on);
 };

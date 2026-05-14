@@ -1,4 +1,5 @@
 #include "dirigera_client.h"
+#include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
@@ -6,6 +7,10 @@
 #include <mbedtls/base64.h>
 #include <esp_random.h>
 #include <math.h>
+
+// Static FreeRTOS members
+QueueHandle_t DirigeraClient::s_patch_q    = nullptr;
+TaskHandle_t  DirigeraClient::s_patch_task = nullptr;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -247,9 +252,45 @@ HAEntity* DirigeraClient::find_entity(const String& id) {
     return nullptr;
 }
 
+// ── Async PATCH (background FreeRTOS task) ───────────────────────────────────
+
+/* static */
+void DirigeraClient::_patch_worker(void* arg) {
+    DirigeraClient* self = (DirigeraClient*)arg;
+    PatchJob job;
+    for (;;) {
+        if (xQueueReceive(s_patch_q, &job, portMAX_DELAY) == pdTRUE) {
+            if (WiFi.status() != WL_CONNECTED) continue;   // drop if offline
+            WiFiClientSecure vc;
+            vc.setInsecure();
+            HTTPClient http;
+            http.begin(vc, job.url);
+            http.addHeader("Authorization", "Bearer " + self->_token);
+            http.addHeader("Content-Type", "application/json");
+            http.setTimeout(5000);
+            int code = http.PATCH(job.body);
+            http.end();
+            if (code < 200 || code >= 300)
+                Serial.printf("[PATCH] %d  %s\n", code, job.url);
+        }
+    }
+}
+
+void DirigeraClient::_ensure_patch_task() {
+    if (s_patch_q) return;
+    s_patch_q = xQueueCreate(6, sizeof(PatchJob));
+    // Pin to core 0 (WiFi core) to keep HTTP off the LVGL/Arduino core
+    xTaskCreatePinnedToCore(_patch_worker, "http_patch", 12288, this,
+                            2, &s_patch_task, 0);
+}
+
 bool DirigeraClient::_patch(const String& device_id, const String& body) {
+    _ensure_patch_task();
+    PatchJob job;
     String url = "https://" + _hub_ip + ":8443/v1/devices/" + device_id;
-    return http_patch(url, _token, body);
+    url.toCharArray (job.url,  sizeof(job.url));
+    body.toCharArray(job.body, sizeof(job.body));
+    return xQueueSend(s_patch_q, &job, 0) == pdTRUE;  // non-blocking
 }
 
 void DirigeraClient::_set_power(const String& id, bool on) {
@@ -274,10 +315,9 @@ void DirigeraClient::set_brightness(const String& id, uint8_t val255) {
     HAEntity* e = find_entity(id);
     if (!e) return;
     int pct = max(1, (int)(val255 * 100 / 255));
-    if (_patch(id, "[{\"attributes\":{\"lightLevel\":" + String(pct) + "}}]")) {
-        e->brightness = val255;
-        if (_on_update) _on_update(*e);
-    }
+    e->brightness = val255;
+    if (_on_update) _on_update(*e);
+    _patch(id, "[{\"attributes\":{\"lightLevel\":" + String(pct) + "}}]");
 }
 
 void DirigeraClient::load_demo() {
@@ -328,10 +368,9 @@ void DirigeraClient::set_color(const String& id, uint8_t r, uint8_t g, uint8_t b
     if (!e) return;
     float h, s;
     rgb_to_hs(r, g, b, h, s);
+    e->r = r; e->g = g; e->b = b;
+    if (_on_update) _on_update(*e);
     String body = "[{\"attributes\":{\"colorHue\":" + String(h, 2) +
                   ",\"colorSaturation\":" + String(s, 3) + "}}]";
-    if (_patch(id, body)) {
-        e->r = r; e->g = g; e->b = b;
-        if (_on_update) _on_update(*e);
-    }
+    _patch(id, body);
 }
