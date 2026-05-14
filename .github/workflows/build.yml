@@ -38,8 +38,9 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp site/index.html    _site/index.html
-          cp site/manifest.json _site/manifest.json
+          cp site/index.html     _site/index.html
+          cp site/manifest.json  _site/manifest.json
+          cp site/version.json   _site/version.json
           cp .pio/build/tdisplay-s3-pro/bootloader.bin _site/bootloader.bin
           cp .pio/build/tdisplay-s3-pro/partitions.bin _site/partitions.bin
           cp .pio/build/tdisplay-s3-pro/firmware.bin   _site/firmware.bin
