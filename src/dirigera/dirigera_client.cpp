@@ -9,10 +9,13 @@
 #include <math.h>
 
 // Static FreeRTOS members
-QueueHandle_t DirigeraClient::s_patch_q    = nullptr;
+QueueHandle_t DirigeraClient::s_patch_q   = nullptr;
 TaskHandle_t  DirigeraClient::s_patch_task = nullptr;
+TaskHandle_t  DirigeraClient::s_fetch_task = nullptr;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+// NOTE: secure_client() is used only on the main thread (pairing flow).
+//       Background tasks create their own WiFiClientSecure on the stack.
 
 static WiFiClientSecure& secure_client() {
     static WiFiClientSecure c;
@@ -20,9 +23,12 @@ static WiFiClientSecure& secure_client() {
     return c;
 }
 
-static bool http_get(const String& url, const String& token, String& out) {
+// GET that creates its own WiFiClientSecure — safe to call from any task
+static bool http_get_bg(const String& url, const String& token, String& out) {
+    WiFiClientSecure vc;
+    vc.setInsecure();
     HTTPClient http;
-    http.begin(secure_client(), url);
+    http.begin(vc, url);
     http.addHeader("Authorization", "Bearer " + token);
     http.addHeader("Accept", "application/json");
     http.setTimeout(8000);
@@ -30,17 +36,6 @@ static bool http_get(const String& url, const String& token, String& out) {
     if (code == 200) { out = http.getString(); http.end(); return true; }
     Serial.printf("DIRIGERA GET %d  %s\n", code, url.c_str());
     http.end(); return false;
-}
-
-static bool http_patch(const String& url, const String& token, const String& body) {
-    HTTPClient http;
-    http.begin(secure_client(), url);
-    http.addHeader("Authorization", "Bearer " + token);
-    http.addHeader("Content-Type", "application/json");
-    http.setTimeout(5000);
-    int code = http.PATCH(body);
-    http.end();
-    return code >= 200 && code < 300;
 }
 
 // ── OAuth PKCE ───────────────────────────────────────────────────────────────
@@ -152,13 +147,21 @@ static void hs_to_rgb(float h, float s, uint8_t& r, uint8_t& g, uint8_t& b) {
     r=(uint8_t)((rf+m)*255); g=(uint8_t)((gf+m)*255); b=(uint8_t)((bf+m)*255);
 }
 
+// ── _fetch_devices ───────────────────────────────────────────────────────────
+// Called exclusively from the fetch task (core 0).
+// HTTP and JSON parsing happen without holding _mutex.
+// Only the merge step takes _mutex — that window is very short.
+
 void DirigeraClient::_fetch_devices() {
+    if (WiFi.status() != WL_CONNECTED) return;
+
     String resp;
-    if (!http_get("https://" + _hub_ip + ":8443/v1/devices", _token, resp)) return;
+    if (!http_get_bg("https://" + _hub_ip + ":8443/v1/devices", _token, resp)) return;
 
     DynamicJsonDocument doc(32768);
     if (deserializeJson(doc, resp) != DeserializationError::Ok) return;
 
+    // Parse into local vectors (no lock needed — not shared yet)
     std::vector<HAArea>   new_areas;
     std::vector<HAEntity> new_entities;
     std::vector<String>   seen_rooms;
@@ -167,7 +170,6 @@ void DirigeraClient::_fetch_devices() {
         String dtype = dev["type"].as<String>();
         if (dtype != "LIGHT" && dtype != "OUTLET") continue;
 
-        // Room
         String room_id   = dev["room"]["id"].as<String>();
         String room_name = dev["room"]["name"].as<String>();
         if (room_name.isEmpty()) room_name = "No room";
@@ -181,7 +183,6 @@ void DirigeraClient::_fetch_devices() {
             new_areas.push_back(a);
         }
 
-        // Entity
         JsonObject attr = dev["attributes"];
         HAEntity e;
         e.entity_id     = dev["id"].as<String>();
@@ -208,16 +209,28 @@ void DirigeraClient::_fetch_devices() {
         new_entities.push_back(e);
     }
 
+    // ── Merge under mutex ────────────────────────────────────────
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+
     bool first_load = _entities.empty();
 
-    // Merge: update existing, add new
+    if (first_load) {
+        _areas    = new_areas;
+        _entities = new_entities;
+        xSemaphoreGive(_mutex);
+        _ready_pending = true;   // main thread will call _on_ready()
+        return;
+    }
+
+    // Subsequent fetches: merge and track what changed
     for (auto& ne : new_entities) {
         bool found = false;
         for (auto& oe : _entities) {
             if (oe.entity_id == ne.entity_id) {
                 bool changed = (oe.state != ne.state || oe.brightness != ne.brightness);
                 oe = ne;
-                if (changed && !first_load && _on_update) _on_update(oe);
+                if (changed && _upd_count < MAX_UPD)
+                    ne.entity_id.toCharArray(_upd_ids[_upd_count++], sizeof(_upd_ids[0]));
                 found = true;
                 break;
             }
@@ -225,34 +238,10 @@ void DirigeraClient::_fetch_devices() {
         if (!found) _entities.push_back(ne);
     }
 
-    if (first_load) {
-        _areas = new_areas;
-        _entities = new_entities;
-        if (_on_ready) _on_ready();
-    }
+    xSemaphoreGive(_mutex);
 }
 
-// ── Public API ───────────────────────────────────────────────────────────────
-
-void DirigeraClient::begin(const String& hub_ip, const String& token) {
-    _hub_ip = hub_ip;
-    _token  = token;
-    _fetch_devices();
-}
-
-void DirigeraClient::loop() {
-    if (millis() - _last_poll > 5000) {
-        _last_poll = millis();
-        _fetch_devices();
-    }
-}
-
-HAEntity* DirigeraClient::find_entity(const String& id) {
-    for (auto& e : _entities) if (e.entity_id == id) return &e;
-    return nullptr;
-}
-
-// ── Async PATCH (background FreeRTOS task) ───────────────────────────────────
+// ── FreeRTOS tasks ───────────────────────────────────────────────────────────
 
 /* static */
 void DirigeraClient::_patch_worker(void* arg) {
@@ -260,7 +249,7 @@ void DirigeraClient::_patch_worker(void* arg) {
     PatchJob job;
     for (;;) {
         if (xQueueReceive(s_patch_q, &job, portMAX_DELAY) == pdTRUE) {
-            if (WiFi.status() != WL_CONNECTED) continue;   // drop if offline
+            if (WiFi.status() != WL_CONNECTED) continue;
             WiFiClientSecure vc;
             vc.setInsecure();
             HTTPClient http;
@@ -276,51 +265,186 @@ void DirigeraClient::_patch_worker(void* arg) {
     }
 }
 
-void DirigeraClient::_ensure_patch_task() {
-    if (s_patch_q) return;
-    s_patch_q = xQueueCreate(6, sizeof(PatchJob));
-    // Pin to core 0 (WiFi core) to keep HTTP off the LVGL/Arduino core
-    xTaskCreatePinnedToCore(_patch_worker, "http_patch", 12288, this,
-                            2, &s_patch_task, 0);
+/* static */
+void DirigeraClient::_fetch_task_fn(void* arg) {
+    DirigeraClient* self = (DirigeraClient*)arg;
+    // First fetch immediately on startup
+    self->_fetch_devices();
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        self->_fetch_devices();
+    }
 }
 
+void DirigeraClient::_ensure_tasks() {
+    if (s_patch_q) return;   // already started
+
+    s_patch_q = xQueueCreate(6, sizeof(PatchJob));
+
+    // PATCH task: core 0, priority 2, 12 KB stack
+    xTaskCreatePinnedToCore(_patch_worker,  "http_patch", 12288, this,
+                            2, &s_patch_task, 0);
+    // Fetch task: core 0, priority 1 (lower than PATCH), 14 KB stack
+    xTaskCreatePinnedToCore(_fetch_task_fn, "http_fetch", 14336, this,
+                            1, &s_fetch_task, 0);
+}
+
+// ── Async PATCH helper ───────────────────────────────────────────────────────
+
 bool DirigeraClient::_patch(const String& device_id, const String& body) {
-    _ensure_patch_task();
     PatchJob job;
     String url = "https://" + _hub_ip + ":8443/v1/devices/" + device_id;
     url.toCharArray (job.url,  sizeof(job.url));
     body.toCharArray(job.body, sizeof(job.body));
-    return xQueueSend(s_patch_q, &job, 0) == pdTRUE;  // non-blocking
+    return xQueueSend(s_patch_q, &job, 0) == pdTRUE;
 }
 
+// ── Entity lookup ────────────────────────────────────────────────────────────
+
+// _find_entity_locked: call while _mutex is already held (internal use).
+HAEntity* DirigeraClient::_find_entity_locked(const String& id) {
+    for (auto& e : _entities) if (e.entity_id == id) return &e;
+    return nullptr;
+}
+
+// find_entity: public, main-thread only.
+// The background task holds _mutex only during the short merge phase (~1 ms
+// every 5 s).  LVGL callbacks that call this are safe in practice.
+HAEntity* DirigeraClient::find_entity(const String& id) {
+    return _find_entity_locked(id);
+}
+
+// ── Public API ───────────────────────────────────────────────────────────────
+
+void DirigeraClient::begin(const String& hub_ip, const String& token) {
+    _hub_ip = hub_ip;
+    _token  = token;
+    _mutex  = xSemaphoreCreateMutex();
+    _ensure_tasks();
+    // Fetch starts immediately in _fetch_task_fn; _on_ready fires via loop()
+}
+
+// loop() — runs on main/Arduino thread (core 1).
+// No HTTP here. Just checks flags set by background tasks and fires callbacks
+// on the main thread so LVGL is never called from a background task.
+void DirigeraClient::loop() {
+    // 1. First fetch completed → build the home screen
+    if (_ready_pending) {
+        _ready_pending = false;
+        if (_on_ready) _on_ready();
+    }
+
+    // 2. Subsequent fetches found changed entities → notify UI
+    if (_upd_count > 0 && _mutex) {
+        // Snapshot changed entities under mutex, release before calling LVGL
+        HAEntity snap[MAX_UPD];
+        int n = 0;
+
+        if (xSemaphoreTake(_mutex, 0) == pdTRUE) {   // non-blocking; skip if busy
+            n = min(_upd_count, MAX_UPD);
+            for (int i = 0; i < n; i++) {
+                HAEntity* e = _find_entity_locked(String(_upd_ids[i]));
+                if (e) snap[i] = *e;
+                else   snap[i].entity_id = "";   // mark invalid
+            }
+            _upd_count = 0;
+            xSemaphoreGive(_mutex);
+        }
+
+        for (int i = 0; i < n; i++) {
+            if (!snap[i].entity_id.isEmpty() && _on_update)
+                _on_update(snap[i]);
+        }
+    }
+}
+
+// ── Optimistic state changes (main thread) ───────────────────────────────────
+// Update local state immediately → no visual lag waiting for hub round-trip.
+// If PATCH fails, the next 5-s fetch will self-correct.
+
 void DirigeraClient::_set_power(const String& id, bool on) {
-    HAEntity* e = find_entity(id);
-    if (!e) return;
-    // Optimistic: update state and notify UI immediately — don't wait for HTTP round-trip.
-    // If the PATCH fails the next poll (5 s) will correct it.
-    e->state = on ? "on" : "off";
-    if (_on_update) _on_update(*e);
+    HAEntity copy;
+    bool found = false;
+
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+    HAEntity* e = _find_entity_locked(id);
+    if (e) {
+        e->state = on ? "on" : "off";
+        copy  = *e;
+        found = true;
+    }
+    xSemaphoreGive(_mutex);
+
+    if (!found) return;
+    if (_on_update) _on_update(copy);
+
     bool ok = _patch(id, "[{\"attributes\":{\"isOn\":" + String(on ? "true" : "false") + "}}]");
-    if (!ok) Serial.printf("[DIRIGERA] _set_power PATCH failed for %s\n", id.c_str());
+    if (!ok) Serial.printf("[DIRIGERA] _set_power queue full for %s\n", id.c_str());
 }
 
 void DirigeraClient::toggle(const String& id) {
-    HAEntity* e = find_entity(id);
-    if (e) _set_power(id, !e->is_on());
+    HAEntity copy;
+    bool found = false;
+
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+    HAEntity* e = _find_entity_locked(id);
+    if (e) { copy = *e; found = true; }
+    xSemaphoreGive(_mutex);
+
+    if (found) _set_power(id, !copy.is_on());
 }
+
 void DirigeraClient::turn_on (const String& id) { _set_power(id, true);  }
 void DirigeraClient::turn_off(const String& id) { _set_power(id, false); }
 
 void DirigeraClient::set_brightness(const String& id, uint8_t val255) {
-    HAEntity* e = find_entity(id);
-    if (!e) return;
+    HAEntity copy;
+    bool found = false;
+
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+    HAEntity* e = _find_entity_locked(id);
+    if (e) {
+        e->brightness = val255;
+        copy  = *e;
+        found = true;
+    }
+    xSemaphoreGive(_mutex);
+
+    if (!found) return;
+    if (_on_update) _on_update(copy);
+
     int pct = max(1, (int)(val255 * 100 / 255));
-    e->brightness = val255;
-    if (_on_update) _on_update(*e);
     _patch(id, "[{\"attributes\":{\"lightLevel\":" + String(pct) + "}}]");
 }
 
+void DirigeraClient::set_color(const String& id, uint8_t r, uint8_t g, uint8_t b) {
+    HAEntity copy;
+    bool found = false;
+    float h, s;
+    rgb_to_hs(r, g, b, h, s);
+
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+    HAEntity* e = _find_entity_locked(id);
+    if (e) {
+        e->r = r; e->g = g; e->b = b;
+        copy  = *e;
+        found = true;
+    }
+    xSemaphoreGive(_mutex);
+
+    if (!found) return;
+    if (_on_update) _on_update(copy);
+
+    String body = "[{\"attributes\":{\"colorHue\":" + String(h, 2) +
+                  ",\"colorSaturation\":" + String(s, 3) + "}}]";
+    _patch(id, body);
+}
+
+// ── Demo (main thread only) ───────────────────────────────────────────────────
+
 void DirigeraClient::load_demo() {
+    // demo doesn't use the background task — runs fully on main thread
+    xSemaphoreTake(_mutex, portMAX_DELAY);
     _areas.clear();
     _entities.clear();
 
@@ -360,17 +484,7 @@ void DirigeraClient::load_demo() {
     light("d8", "Counter",    "r3", true,  true,  false);
     outlet("d9","Coffee Mach","r3", false);
 
-    if (_on_ready) _on_ready();
-}
+    xSemaphoreGive(_mutex);
 
-void DirigeraClient::set_color(const String& id, uint8_t r, uint8_t g, uint8_t b) {
-    HAEntity* e = find_entity(id);
-    if (!e) return;
-    float h, s;
-    rgb_to_hs(r, g, b, h, s);
-    e->r = r; e->g = g; e->b = b;
-    if (_on_update) _on_update(*e);
-    String body = "[{\"attributes\":{\"colorHue\":" + String(h, 2) +
-                  ",\"colorSaturation\":" + String(s, 3) + "}}]";
-    _patch(id, body);
+    if (_on_ready) _on_ready();
 }

@@ -1,9 +1,8 @@
 {
-  "version": "v5.32",
+  "version": "v5.33",
   "changes": [
-    "HTTP PATCH na pozadí (FreeRTOS) — LVGL se nikdy nezasekne",
-    "Color wheel — reaguje plynule, posílá na uvolnění prstu",
-    "On/Off — reaguje na RELEASED, nepotřebuje přesné načasování",
-    "Baterie — zobrazí USB když není LiPo připojeno"
+    "Polling na pozadí (FreeRTOS) — on/off tlačítka reagují vždy",
+    "Hlavní smyčka nikdy nečeká na HTTP — LVGL běží plynule",
+    "Baterie — neznámé napětí zobrazí '--' místo 'USB'"
   ]
 }

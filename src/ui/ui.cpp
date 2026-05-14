@@ -150,9 +150,9 @@ void UI::set_grid_cols(uint8_t cols) {
 void UI::set_battery(int pct, bool charging, float v) {
     if (!_bat_label) return;
     char buf[28];
-    // < 0.5 V = no LiPo connected (device running on USB only)
+    // < 0.5 V = ADC reads nothing (battery enable pin or HW issue)
     if (v >= 0 && v < 0.5f) {
-        lv_label_set_text(_bat_label, LV_SYMBOL_USB " USB");
+        lv_label_set_text(_bat_label, "--");
         lv_obj_set_style_text_color(_bat_label, C_TEXT2, 0);
         return;
     }

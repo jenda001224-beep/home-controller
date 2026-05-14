@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "../ha/entity.h"
 
 using EntityUpdateCb = std::function<void(const HAEntity&)>;
@@ -13,15 +14,20 @@ using ReadyCb        = std::function<void()>;
 // ============================================================
 //  DirigeraClient — talks to IKEA DIRIGERA hub REST API
 //  https://[hub_ip]:8443/v1   (self-signed TLS, skip verify)
+//
+//  v5.33: _fetch_devices() moved to a background FreeRTOS task
+//  (core 0) so lv_timer_handler() never stalls waiting for HTTP.
+//  dc.loop() only dispatches callbacks on the main thread — no I/O.
 // ============================================================
 class DirigeraClient {
 public:
     void begin(const String& hub_ip, const String& token);
-    void loop();   // call every ~5 s to poll state
+    void loop();   // call from Arduino loop() — dispatches callbacks, zero blocking
 
     // HAClient-compatible interface
     const std::vector<HAArea>&   areas()    const { return _areas; }
     const std::vector<HAEntity>& entities() const { return _entities; }
+    // Main-thread only — do not cache the pointer across yield points
     HAEntity* find_entity(const String& id);
 
     void toggle(const String& id);
@@ -42,7 +48,6 @@ public:
 private:
     String _hub_ip;
     String _token;
-    uint32_t _last_poll = 0;
 
     std::vector<HAArea>   _areas;
     std::vector<HAEntity> _entities;
@@ -50,18 +55,36 @@ private:
     EntityUpdateCb _on_update;
     ReadyCb        _on_ready;
 
-    // Async PATCH via background FreeRTOS task —
-    // PATCH calls are non-blocking; main loop / LVGL never stalls waiting for HTTP.
+    // ── Thread safety ────────────────────────────────────────────
+    // _mutex guards _entities, _areas, and the update-ID ring below.
+    // Take with xSemaphoreTake before touching those fields.
+    SemaphoreHandle_t _mutex = nullptr;
+
+    // Background worker signals main thread via these flags/buffers —
+    // written by fetch task (core 0), read+cleared by loop() (core 1).
+    volatile bool _ready_pending = false;
+
+    static const int MAX_UPD = 8;
+    char _upd_ids[MAX_UPD][64];   // entity_ids that changed in last fetch
+    int  _upd_count = 0;          // how many valid entries; guarded by _mutex
+
+    // ── Async PATCH (background FreeRTOS task) ────────────────────
     struct PatchJob {
-        char url[200];   // "https://x.x.x.x:8443/v1/devices/<uuid>" ≈ 80 chars
+        char url[200];   // "https://x.x.x.x:8443/v1/devices/<uuid>"
         char body[80];   // largest body: colorHue+colorSaturation ≈ 65 chars
     };
     static QueueHandle_t  s_patch_q;
     static TaskHandle_t   s_patch_task;
     static void _patch_worker(void* arg);
-    void _ensure_patch_task();
 
-    bool _patch(const String& device_id, const String& json_body);  // now async
-    void _fetch_devices();   // synchronous GET (polling, every 5 s)
+    // ── Periodic fetch (background FreeRTOS task) ─────────────────
+    static TaskHandle_t   s_fetch_task;
+    static void _fetch_task_fn(void* arg);
+
+    // ── Internal helpers ──────────────────────────────────────────
+    void _ensure_tasks();
+    bool _patch(const String& device_id, const String& json_body);  // async
+    void _fetch_devices();      // runs on fetch task; updates _entities under mutex
     void _set_power(const String& id, bool on);
+    HAEntity* _find_entity_locked(const String& id);  // call while _mutex is held
 };
