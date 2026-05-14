@@ -1,8 +1,7 @@
 {
-  "version": "v5.34",
+  "version": "v5.35",
   "changes": [
-    "Baterie přes PMU (SY6970) — správné napětí a procenta",
-    "USB nabíjení zobrazí '⚡ USB' místo nulového napětí",
-    "Demo — opraveno padání při startu bez spárované DIRIGERY"
+    "Crash v detail panelu opraven — mutex nebyl blokující z LVGL callbacku",
+    "Baterie — ikona symbolu + procenta, blesk při nabíjení"
   ]
 }

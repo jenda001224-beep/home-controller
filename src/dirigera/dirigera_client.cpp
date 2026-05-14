@@ -359,82 +359,67 @@ void DirigeraClient::loop() {
 }
 
 // ── Optimistic state changes (main thread) ───────────────────────────────────
-// Update local state immediately → no visual lag waiting for hub round-trip.
-// If PATCH fails, the next 5-s fetch will self-correct.
+// These are called from LVGL event callbacks — NEVER block with portMAX_DELAY
+// here or the watchdog fires.  Use a non-blocking mutex take (timeout = 0):
+// if the fetch task happens to be in its 5 ms merge window we just skip the
+// optimistic update; the PATCH still goes out and the fetch confirms in ≤ 5 s.
 
 void DirigeraClient::_set_power(const String& id, bool on) {
-    HAEntity copy;
-    bool found = false;
+    HAEntity snap;
+    bool notify = false;
 
-    xSemaphoreTake(_mutex, portMAX_DELAY);
-    HAEntity* e = _find_entity_locked(id);
-    if (e) {
-        e->state = on ? "on" : "off";
-        copy  = *e;
-        found = true;
+    if (_mutex && xSemaphoreTake(_mutex, 0) == pdTRUE) {
+        HAEntity* e = _find_entity_locked(id);
+        if (e) { e->state = on ? "on" : "off"; snap = *e; notify = true; }
+        xSemaphoreGive(_mutex);
     }
-    xSemaphoreGive(_mutex);
 
-    if (!found) return;
-    if (_on_update) _on_update(copy);
-
-    bool ok = _patch(id, "[{\"attributes\":{\"isOn\":" + String(on ? "true" : "false") + "}}]");
-    if (!ok) Serial.printf("[DIRIGERA] _set_power queue full for %s\n", id.c_str());
+    if (notify && _on_update) _on_update(snap);
+    _patch(id, "[{\"attributes\":{\"isOn\":" + String(on ? "true" : "false") + "}}]");
 }
 
 void DirigeraClient::toggle(const String& id) {
-    HAEntity copy;
-    bool found = false;
-
-    xSemaphoreTake(_mutex, portMAX_DELAY);
-    HAEntity* e = _find_entity_locked(id);
-    if (e) { copy = *e; found = true; }
-    xSemaphoreGive(_mutex);
-
-    if (found) _set_power(id, !copy.is_on());
+    bool cur_on = false, found = false;
+    if (_mutex && xSemaphoreTake(_mutex, 0) == pdTRUE) {
+        HAEntity* e = _find_entity_locked(id);
+        if (e) { cur_on = e->is_on(); found = true; }
+        xSemaphoreGive(_mutex);
+    }
+    if (found) _set_power(id, !cur_on);
 }
 
 void DirigeraClient::turn_on (const String& id) { _set_power(id, true);  }
 void DirigeraClient::turn_off(const String& id) { _set_power(id, false); }
 
 void DirigeraClient::set_brightness(const String& id, uint8_t val255) {
-    HAEntity copy;
-    bool found = false;
+    HAEntity snap;
+    bool notify = false;
 
-    xSemaphoreTake(_mutex, portMAX_DELAY);
-    HAEntity* e = _find_entity_locked(id);
-    if (e) {
-        e->brightness = val255;
-        copy  = *e;
-        found = true;
+    if (_mutex && xSemaphoreTake(_mutex, 0) == pdTRUE) {
+        HAEntity* e = _find_entity_locked(id);
+        if (e) { e->brightness = val255; snap = *e; notify = true; }
+        xSemaphoreGive(_mutex);
     }
-    xSemaphoreGive(_mutex);
 
-    if (!found) return;
-    if (_on_update) _on_update(copy);
-
+    if (notify && _on_update) _on_update(snap);
     int pct = max(1, (int)(val255 * 100 / 255));
     _patch(id, "[{\"attributes\":{\"lightLevel\":" + String(pct) + "}}]");
 }
 
 void DirigeraClient::set_color(const String& id, uint8_t r, uint8_t g, uint8_t b) {
-    HAEntity copy;
-    bool found = false;
     float h, s;
     rgb_to_hs(r, g, b, h, s);
 
-    xSemaphoreTake(_mutex, portMAX_DELAY);
-    HAEntity* e = _find_entity_locked(id);
-    if (e) {
-        e->r = r; e->g = g; e->b = b;
-        copy  = *e;
-        found = true;
+    HAEntity snap;
+    bool notify = false;
+
+    if (_mutex && xSemaphoreTake(_mutex, 0) == pdTRUE) {
+        HAEntity* e = _find_entity_locked(id);
+        if (e) { e->r = r; e->g = g; e->b = b; snap = *e; notify = true; }
+        xSemaphoreGive(_mutex);
     }
-    xSemaphoreGive(_mutex);
 
-    if (!found) return;
-    if (_on_update) _on_update(copy);
-
+    if (notify && _on_update) _on_update(snap);
     String body = "[{\"attributes\":{\"colorHue\":" + String(h, 2) +
                   ",\"colorSaturation\":" + String(s, 3) + "}}]";
     _patch(id, body);

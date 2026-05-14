@@ -33,7 +33,7 @@
 
 // -- App constants --
 #define APP_NAME       "SwitchPro"
-#define APP_VERSION    "v5.34"
+#define APP_VERSION    "v5.35"
 #define SETUP_AP_NAME  "SwitchPro-Setup"
 
 // -- Deep sleep default (seconds, 0 = never) --

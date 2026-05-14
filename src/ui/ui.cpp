@@ -149,23 +149,24 @@ void UI::set_grid_cols(uint8_t cols) {
 
 void UI::set_battery(int pct, bool charging, float v) {
     if (!_bat_label) return;
-    char buf[28];
-    // < 0.5 V = ADC reads nothing (battery enable pin or HW issue)
-    if (v >= 0 && v < 0.5f) {
+    char buf[20];
+
+    if (charging) {
+        // USB connected — bolt symbol
+        lv_label_set_text(_bat_label, LV_SYMBOL_CHARGE " USB");
+        lv_obj_set_style_text_color(_bat_label, C_GREEN, 0);
+        return;
+    }
+    if (v < 0) {
+        // PMU not available
         lv_label_set_text(_bat_label, "--");
         lv_obj_set_style_text_color(_bat_label, C_TEXT2, 0);
         return;
     }
-    if (charging) {
-        if (v >= 0) snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %.1fV", v);
-        else        snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " USB");
-        lv_obj_set_style_text_color(_bat_label, C_GREEN, 0);
-    } else {
-        if (v >= 0) snprintf(buf, sizeof(buf), "%.1fV %d%%", v, pct);
-        else        snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
-        lv_color_t col = (pct < 20) ? C_RED : (pct < 40) ? C_ACCENT : C_TEXT;
-        lv_obj_set_style_text_color(_bat_label, col, 0);
-    }
+    // On battery: icon + percent
+    snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
+    lv_color_t col = (pct < 20) ? C_RED : (pct < 40) ? C_ACCENT : C_TEXT;
+    lv_obj_set_style_text_color(_bat_label, col, 0);
     lv_label_set_text(_bat_label, buf);
 }
 
