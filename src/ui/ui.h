@@ -39,6 +39,7 @@ private:
     lv_obj_t* _detail_colorwheel = nullptr;
     String    _detail_entity_id;
     int       _detail_pill_h     = 0;         // cached pill height for drag calc
+    uint32_t  _bri_last_send_ms  = 0;         // throttle brightness HTTP sends
 
     struct TileRef {
         String    entity_id;

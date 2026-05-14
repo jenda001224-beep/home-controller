@@ -1,0 +1,8 @@
+{
+  "version": "v5.29",
+  "changes": [
+    "Power switch — plain tap button, no swipe needed",
+    "Brightness slider — no lag, sends on release",
+    "OTA — shows version and what's new before updating"
+  ]
+}

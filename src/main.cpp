@@ -238,14 +238,25 @@ static const char SETTINGS_JS[] PROGMEM =
     "    s.textContent='Error';s.className='status err';});}"
     "document.getElementById('otabtn').addEventListener('click',function(){"
     "  var btn=this,s=document.getElementById('otas');"
-    "  btn.disabled=true;"
-    "  s.textContent='Starting update — watch device screen...';s.className='status';"
-    "  fetch('/ota_update').then(function(r){return r.json();})"
+    "  btn.disabled=true;s.innerHTML='Checking...';s.className='status';"
+    "  fetch('/ota_check').then(function(r){return r.json();})"
     "  .then(function(d){"
-    "    s.textContent='Downloading... device will reboot when done.';s.className='status ok';"
-    "  }).catch(function(){"
-    "    s.textContent='Could not reach device';s.className='status err';"
-    "    btn.disabled=false;});"
+    "    if(d.error){s.textContent='Error: '+d.msg;s.className='status err';btn.disabled=false;return;}"
+    "    if(d.update_available){"
+    "      var h='<b>'+d.version+' available</b><br><small style=\"color:#8e8e93\">Current: '+d.current+'</small><br>';"
+    "      if(d.changes&&d.changes.length){h+='<ul style=\"margin:8px 0 12px 16px;font-size:13px\">';d.changes.forEach(function(c){h+='<li>'+c+'</li>';});h+='</ul>';}"
+    "      h+='<button class=\"btn\" id=\"dobtn\">Install '+d.version+'</button>';"
+    "      s.innerHTML=h;s.className='status';"
+    "      document.getElementById('dobtn').addEventListener('click',function(){"
+    "        this.disabled=true;s.textContent='Installing... watch device screen';s.className='status';"
+    "        fetch('/ota_update').then(function(r){return r.json();})"
+    "        .then(function(){s.textContent='Downloading — device reboots when done';s.className='status ok';})"
+    "        .catch(function(){s.textContent='Error';s.className='status err';});"
+    "      });"
+    "    }else{"
+    "      s.textContent='\\u2713 Up to date ('+d.current+')';s.className='status ok';btn.disabled=false;"
+    "    }"
+    "  }).catch(function(){s.textContent='Check failed';s.className='status err';btn.disabled=false;});"
     "});"
     "</script>";
 
@@ -409,11 +420,37 @@ static void handle_settings_set() {
     if (changed) save_settings();
     app_srv.send(200,"application/json","{\"ok\":true}");
 }
+static void handle_ota_check() {
+    // Fetch version.json from GitHub Pages, inject current version, return to browser
+    WiFiClientSecure vc;
+    vc.setInsecure();
+    HTTPClient http;
+    http.begin(vc, "https://jenda001224-beep.github.io/home-controller/version.json");
+    http.setTimeout(8000);
+    http.addHeader("Cache-Control", "no-cache");
+    int code = http.GET();
+    if (code == 200) {
+        String body = http.getString();
+        http.end();
+        DynamicJsonDocument doc(512);
+        if (deserializeJson(doc, body) == DeserializationError::Ok) {
+            String latest = doc["version"] | String("");
+            doc["current"]          = APP_VERSION;
+            doc["update_available"] = (!latest.isEmpty() && latest != APP_VERSION);
+            String out; serializeJson(doc, out);
+            app_srv.send(200, "application/json", out);
+            return;
+        }
+    }
+    http.end();
+    app_srv.send(200, "application/json",
+        "{\"error\":true,\"msg\":\"Cannot reach update server\",\"current\":\"" APP_VERSION "\"}");
+}
+
 static void handle_ota_update() {
-    // Respond immediately so the browser gets feedback before we start
     app_srv.send(200, "application/json",
         "{\"ok\":true,\"msg\":\"Update started — watch the device screen\"}");
-    g_ota_pending = true;   // main loop picks this up
+    g_ota_pending = true;
 }
 
 static void handle_settings_get() {
@@ -433,6 +470,7 @@ static void start_app_server() {
     app_srv.on("/status",       HTTP_GET, handle_status);
     app_srv.on("/settings_set", HTTP_GET, handle_settings_set);
     app_srv.on("/settings",     HTTP_GET, handle_settings_get);
+    app_srv.on("/ota_check",    HTTP_GET, handle_ota_check);
     app_srv.on("/ota_update",   HTTP_GET, handle_ota_update);
     app_srv.begin();
     Serial.println("App server on :80");

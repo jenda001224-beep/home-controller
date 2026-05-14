@@ -475,28 +475,30 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_align(_detail_title, LV_ALIGN_TOP_MID, 0, 26);
 
     // Power row
+    // sw_row is just a transparent placeholder; the button fills it
     lv_obj_t* sw_row = lv_obj_create(_detail_panel);
     lv_obj_set_size(sw_row, TILE_W, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(sw_row, 0, 0);
     lv_obj_set_style_border_width(sw_row, 0, 0);
     lv_obj_set_style_pad_all(sw_row, 0, 0);
-    lv_obj_align(sw_row, LV_ALIGN_TOP_MID, 0, 64);
-    lv_obj_set_layout(sw_row, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(sw_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(sw_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_align(sw_row, LV_ALIGN_TOP_MID, 0, 58);
     lv_obj_clear_flag(sw_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(sw_row, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t* sw_lbl = lv_label_create(sw_row);
-    lv_label_set_text(sw_lbl, "Power");
-    lv_obj_set_style_text_color(sw_lbl, C_TEXT, 0);
-    lv_obj_set_style_text_font(sw_lbl, &lv_font_montserrat_16, 0);
-
-    _detail_switch = lv_switch_create(sw_row);
-    lv_obj_set_size(_detail_switch, 76, 40);   // much bigger = easy to tap
-    lv_obj_set_ext_click_area(_detail_switch, 18);
-    lv_obj_set_style_bg_color(_detail_switch, C_ACCENT, LV_PART_INDICATOR | LV_STATE_CHECKED);
-    if (e.is_on()) lv_obj_add_state(_detail_switch, LV_STATE_CHECKED);
-    lv_obj_add_event_cb(_detail_switch, _detail_switch_changed, LV_EVENT_VALUE_CHANGED, this);
+    // Big toggle button — plain tap, no swipe required
+    _detail_switch = lv_btn_create(sw_row);
+    lv_obj_set_size(_detail_switch, TILE_W, 56);
+    lv_obj_set_style_radius(_detail_switch, 14, 0);
+    lv_obj_set_style_shadow_width(_detail_switch, 0, 0);
+    lv_obj_set_style_border_width(_detail_switch, 0, 0);
+    lv_obj_set_style_bg_color(_detail_switch, e.is_on() ? C_ACCENT : C_BG3, 0);
+    lv_obj_set_style_bg_color(_detail_switch, e.is_on() ? C_ACCENT : C_BG2, LV_STATE_PRESSED);
+    lv_obj_t* sw_lbl = lv_label_create(_detail_switch);
+    lv_label_set_text(sw_lbl, e.is_on() ? LV_SYMBOL_POWER "  On" : LV_SYMBOL_POWER "  Off");
+    lv_obj_set_style_text_color(sw_lbl, e.is_on() ? lv_color_black() : C_TEXT2, 0);
+    lv_obj_set_style_text_font(sw_lbl, &lv_font_montserrat_18, 0);
+    lv_obj_align(sw_lbl, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_event_cb(_detail_switch, _detail_switch_changed, LV_EVENT_SHORT_CLICKED, this);
 
     // ---- Brightness view ----
     _detail_bri_view = lv_obj_create(_detail_panel);
@@ -565,7 +567,9 @@ void UI::_show_detail(const String& entity_id) {
         // _detail_bri_fill kept null — lv_slider draws its own indicator
         _detail_bri_fill = nullptr;
 
+        // VALUE_CHANGED = visual only (no HTTP). RELEASED = send to hub.
         lv_obj_add_event_cb(_detail_bri_pill, _bri_slider_cb, LV_EVENT_VALUE_CHANGED, this);
+        lv_obj_add_event_cb(_detail_bri_pill, _bri_slider_cb, LV_EVENT_RELEASED,       this);
     } else if (!e.supports_brightness && e.supports_color) {
         lv_obj_add_flag(_detail_bri_view, LV_OBJ_FLAG_HIDDEN);
     }
@@ -623,8 +627,13 @@ void UI::_close_detail() {
 void UI::_detail_update(const HAEntity& e) {
     if (!_detail_panel) return;
     if (_detail_switch) {
-        if (e.is_on()) lv_obj_add_state(_detail_switch, LV_STATE_CHECKED);
-        else           lv_obj_clear_state(_detail_switch, LV_STATE_CHECKED);
+        bool on = e.is_on();
+        lv_obj_set_style_bg_color(_detail_switch, on ? C_ACCENT : C_BG3, 0);
+        lv_obj_t* lbl = lv_obj_get_child(_detail_switch, 0);
+        if (lbl) {
+            lv_label_set_text(lbl, on ? LV_SYMBOL_POWER "  On" : LV_SYMBOL_POWER "  Off");
+            lv_obj_set_style_text_color(lbl, on ? lv_color_black() : C_TEXT2, 0);
+        }
     }
     if (_detail_bri_pill && e.supports_brightness) {
         lv_slider_set_value(_detail_bri_pill, (int)e.brightness, LV_ANIM_OFF);
@@ -650,23 +659,29 @@ void UI::_tile_long_pressed(lv_event_t* ev) {
 }
 
 void UI::_detail_switch_changed(lv_event_t* ev) {
-    UI* self     = (UI*)lv_event_get_user_data(ev);
-    lv_obj_t* sw = lv_event_get_target(ev);
-    bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
-    if (self->_dc && !self->_detail_entity_id.isEmpty()) {
-        if (on) self->_dc->turn_on(self->_detail_entity_id);
-        else    self->_dc->turn_off(self->_detail_entity_id);
-    }
+    // Called on SHORT_CLICKED — just toggle whatever the current state is
+    UI* self = (UI*)lv_event_get_user_data(ev);
+    if (!self->_dc || self->_detail_entity_id.isEmpty()) return;
+    const HAEntity* ep = self->_dc->find_entity(self->_detail_entity_id);
+    if (!ep) return;
+    if (ep->is_on()) self->_dc->turn_off(self->_detail_entity_id);
+    else             self->_dc->turn_on(self->_detail_entity_id);
 }
 
 void UI::_bri_slider_cb(lv_event_t* ev) {
-    // Native lv_slider VALUE_CHANGED — fires reliably in both drag directions
     UI* self = (UI*)lv_event_get_user_data(ev);
-    if (!self->_detail_bri_pill) return;
+    if (!self->_detail_bri_pill || !self->_dc || self->_detail_entity_id.isEmpty()) return;
+
     int val = lv_slider_get_value(self->_detail_bri_pill);
     uint8_t bri = (uint8_t)constrain(val, 1, 255);
-    if (self->_dc && !self->_detail_entity_id.isEmpty())
+
+    bool released = (lv_event_get_code(ev) == LV_EVENT_RELEASED);
+    uint32_t now  = millis();
+    // Send on finger release OR at most every 300 ms while dragging
+    if (released || now - self->_bri_last_send_ms >= 300) {
+        self->_bri_last_send_ms = now;
         self->_dc->set_brightness(self->_detail_entity_id, bri);
+    }
 }
 
 void UI::_color_changed(lv_event_t* ev) {
