@@ -492,6 +492,8 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_set_style_text_font(sw_lbl, &lv_font_montserrat_16, 0);
 
     _detail_switch = lv_switch_create(sw_row);
+    lv_obj_set_size(_detail_switch, 76, 40);   // much bigger = easy to tap
+    lv_obj_set_ext_click_area(_detail_switch, 18);
     lv_obj_set_style_bg_color(_detail_switch, C_ACCENT, LV_PART_INDICATOR | LV_STATE_CHECKED);
     if (e.is_on()) lv_obj_add_state(_detail_switch, LV_STATE_CHECKED);
     lv_obj_add_event_cb(_detail_switch, _detail_switch_changed, LV_EVENT_VALUE_CHANGED, this);
@@ -527,8 +529,8 @@ void UI::_show_detail(const String& entity_id) {
             pill_top = 52;   // push pill below the button
         }
 
-        // Vertical brightness pill
-        const int PILL_W = 80;
+        // Vertical brightness pill — wider (120px) for easier touch
+        const int PILL_W = 120;
         const int PILL_H = (TFT_HEIGHT - 110) - pill_top - 16;
         _detail_pill_h = PILL_H;
 
@@ -542,10 +544,11 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_set_style_pad_all(_detail_bri_pill, 0, 0);
         lv_obj_clear_flag(_detail_bri_pill, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(_detail_bri_pill, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_ext_click_area(_detail_bri_pill, 30);  // 30px extra hit zone on all sides
 
         // Fill (orange, from bottom)
         int fill_h = (int)((int)e.brightness * PILL_H / 255);
-        if (fill_h < PILL_W / 2) fill_h = PILL_W / 2;
+        if (fill_h < 40) fill_h = 40;
         _detail_bri_fill = lv_obj_create(_detail_bri_pill);
         lv_obj_set_size(_detail_bri_fill, PILL_W, fill_h);
         lv_obj_align(_detail_bri_fill, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -586,10 +589,12 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, 0);
         lv_obj_align(back_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
-        int wheel_sz = TILE_W;
+        // Bigger wheel (260px) fills the screen width better; 32px ring = easy to grab
+        int wheel_sz = TFT_WIDTH - 60;   // 260px
         _detail_colorwheel = lv_colorwheel_create(_detail_col_view, true);
         lv_obj_set_size(_detail_colorwheel, wheel_sz, wheel_sz);
         lv_obj_align(_detail_colorwheel, LV_ALIGN_TOP_MID, 0, 46);
+        lv_obj_set_style_arc_width(_detail_colorwheel, 32, LV_PART_MAIN);  // thick hue ring
         lv_colorwheel_set_rgb(_detail_colorwheel, lv_color_make(e.r, e.g, e.b));
         lv_obj_add_event_cb(_detail_colorwheel, _color_changed, LV_EVENT_VALUE_CHANGED, this);
     }
@@ -620,6 +625,7 @@ void UI::_detail_update(const HAEntity& e) {
         if (fill_h < 40) fill_h = 40;
         lv_obj_set_height(_detail_bri_fill, fill_h);
         lv_obj_align(_detail_bri_fill, LV_ALIGN_BOTTOM_MID, 0, 0);
+        lv_obj_invalidate(_detail_bri_pill);
     }
     if (_detail_colorwheel && e.supports_color)
         lv_colorwheel_set_rgb(_detail_colorwheel, lv_color_make(e.r, e.g, e.b));
@@ -677,6 +683,8 @@ void UI::_bri_drag_cb(lv_event_t* ev) {
     if (fill_h < 40) fill_h = 40;
     lv_obj_set_height(self->_detail_bri_fill, fill_h);
     lv_obj_align(self->_detail_bri_fill, LV_ALIGN_BOTTOM_MID, 0, 0);
+    // Force full pill redraw — without this, shrinking the fill leaves ghost pixels
+    lv_obj_invalidate(self->_detail_bri_pill);
 
     if (self->_dc && !self->_detail_entity_id.isEmpty())
         self->_dc->set_brightness(self->_detail_entity_id, bri);
