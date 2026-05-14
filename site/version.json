@@ -1,8 +1,8 @@
 {
-  "version": "v5.33",
+  "version": "v5.34",
   "changes": [
-    "Polling na pozadí (FreeRTOS) — on/off tlačítka reagují vždy",
-    "Hlavní smyčka nikdy nečeká na HTTP — LVGL běží plynule",
-    "Baterie — neznámé napětí zobrazí '--' místo 'USB'"
+    "Baterie přes PMU (SY6970) — správné napětí a procenta",
+    "USB nabíjení zobrazí '⚡ USB' místo nulového napětí",
+    "Demo — opraveno padání při startu bez spárované DIRIGERY"
   ]
 }

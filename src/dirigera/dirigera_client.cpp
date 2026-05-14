@@ -443,7 +443,9 @@ void DirigeraClient::set_color(const String& id, uint8_t r, uint8_t g, uint8_t b
 // ── Demo (main thread only) ───────────────────────────────────────────────────
 
 void DirigeraClient::load_demo() {
-    // demo doesn't use the background task — runs fully on main thread
+    // demo doesn't use the background task — runs fully on main thread.
+    // _mutex may be null if begin() was never called (no DIRIGERA configured).
+    if (!_mutex) _mutex = xSemaphoreCreateMutex();
     xSemaphoreTake(_mutex, portMAX_DELAY);
     _areas.clear();
     _entities.clear();

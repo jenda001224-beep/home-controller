@@ -7,6 +7,8 @@
 #include <lvgl.h>
 #include <WiFiClientSecure.h>
 #include <HTTPUpdate.h>
+#include <Wire.h>
+#include <XPowersLib.h>
 #include "config.h"
 #include "display/display.h"
 #include "dirigera/dirigera_client.h"
@@ -67,30 +69,50 @@ static void blink_led(int n, int on_ms = 150, int off_ms = 150) {
     }
 }
 
-// -- Battery + charging --
+// -- PMU (SY6970 power management chip) --
+// The T-Display S3 Pro has an SY6970 on the same I2C bus as the touch controller.
+// Wire is already initialized by display_init() before pmu_init() is called.
 
-static float read_battery_v() {
-    // analogReadMilliVolts returns 0 on boards without eFuse ADC calibration.
-    // Use raw analogRead() + manual linear scaling instead.
-    analogReadResolution(12);
-    analogSetPinAttenuation(PIN_BAT_ADC, ADC_11db);
-    // Settle after attenuation change, discard first few samples
-    for (int i = 0; i < 5; i++) { analogRead(PIN_BAT_ADC); delay(1); }
-    // 16-sample average
-    uint32_t raw = 0;
-    for (int i = 0; i < 16; i++) raw += analogRead(PIN_BAT_ADC);
-    raw /= 16;
-    // ESP32-S3, ADC_11db: full scale = 3100 mV (measured typical; datasheet says ~3.1 V)
-    float pin_mv = raw * 3100.0f / 4095.0f;
-    float v      = (pin_mv / 1000.0f) * 2.0f;   // undo 1:2 voltage divider
-    Serial.printf("[BAT] raw=%lu  pin_mv=%.0f  vbat=%.2fV\n", (unsigned long)raw, pin_mv, v);
-    return v;
+static PowersSY6970 pmu;
+static bool         g_pmu_ok = false;
+
+static void pmu_init() {
+    // SY6970 slave address is 0x6A (SY6970_SLAVE_ADDRESS from XPowersLib)
+    g_pmu_ok = pmu.init(Wire, PIN_TOUCH_SDA, PIN_TOUCH_SCL, SY6970_SLAVE_ADDRESS);
+    if (!g_pmu_ok) {
+        Serial.println("[PMU] SY6970 not found");
+        return;
+    }
+    Serial.println("[PMU] SY6970 OK");
+
+    pmu.setInputCurrentLimit(500);      // 500 mA USB input
+    pmu.setChargeTargetVoltage(4352);   // 4.352 V target (board spec)
+    pmu.setPrechargeCurr(64);           // 64 mA pre-charge
+    pmu.setChargerConstantCurr(192);    // 192 mA CC (< half of 470 mAh capacity)
+    pmu.enableADCMeasure();             // required before reading voltages
+    pmu.enableCharge();                 // battery is connected
+    pmu.enableStatLed();                // charge indicator LED
 }
-// Single call — returns pct and charging, passes voltage for display
+
+// Returns pct (0-100), charging (USB present), v (volts or -1 if unknown).
+// NOTE: per SY6970 datasheet, VBAT ADC is unreliable when VBUS is present.
 static void read_battery(int& pct, bool& charging, float& v) {
-    v        = read_battery_v();
-    pct      = constrain((int)((v - 3.0f) / 1.2f * 100.0f), 0, 100);
-    charging = (v > 4.30f);
+    if (!g_pmu_ok) { pct = 0; charging = false; v = -1.0f; return; }
+
+    charging    = pmu.isVbusIn();
+    int batt_mv = pmu.getBattVoltage();
+
+    if (charging) {
+        // Can't trust VBAT when USB in — show "USB" instead of bogus voltage
+        v   = -1.0f;
+        pct = 0;
+    } else {
+        v   = batt_mv / 1000.0f;
+        // Linear 3400–4200 mV = 0–100 % (conservative; full charge target is 4352 mV)
+        pct = constrain((int)((batt_mv - 3400) * 100 / 800), 0, 100);
+    }
+    Serial.printf("[PMU] vbus=%s vbat=%d mV pct=%d\n",
+                  charging ? "yes" : "no", batt_mv, pct);
 }
 
 // -- Deep sleep --
@@ -498,14 +520,9 @@ void setup() {
     pinMode(PIN_BTN1,     INPUT_PULLUP);
     pinMode(PIN_BTN2,     INPUT_PULLUP);
 
-    // Battery ADC: set 11dB attenuation on all ADC pins (global is more reliable
-    // than per-pin on ESP32-S3 with Arduino 3.x). Default 0dB clips at ~0.8V;
-    // LiPo through 1:2 divider sits at 1.5–2.1V → always saturates → 0%.
-    analogSetAttenuation(ADC_11db);
-    pinMode(PIN_BAT_ADC, INPUT);
-
     load_settings();
-    display_init();
+    display_init();           // also calls Wire.begin(SDA, SCL) for touch
+    pmu_init();               // SY6970 PMU — Wire already up from display_init()
     display_set_brightness(cfg_brightness);
 
     ui.begin(&dc);

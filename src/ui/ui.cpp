@@ -158,7 +158,7 @@ void UI::set_battery(int pct, bool charging, float v) {
     }
     if (charging) {
         if (v >= 0) snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %.1fV", v);
-        else        snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %d%%", pct);
+        else        snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " USB");
         lv_obj_set_style_text_color(_bat_label, C_GREEN, 0);
     } else {
         if (v >= 0) snprintf(buf, sizeof(buf), "%.1fV %d%%", v, pct);
