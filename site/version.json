@@ -1,8 +1,9 @@
 {
-  "version": "v5.29",
+  "version": "v5.31",
   "changes": [
-    "Power switch — plain tap button, no swipe needed",
-    "Brightness slider — no lag, sends on release",
-    "OTA — shows version and what's new before updating"
+    "On/Off button — reaguje okamžitě (optimistic update)",
+    "Color wheel — menší, nezakrývá tlačítko On/Off",
+    "Battery — zobrazuje napětí (3.8V 65%) pro diagnostiku",
+    "Check for Updates — lepší chyby, vyšší timeout"
   ]
 }

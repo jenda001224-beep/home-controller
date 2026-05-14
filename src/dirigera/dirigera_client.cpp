@@ -255,10 +255,12 @@ bool DirigeraClient::_patch(const String& device_id, const String& body) {
 void DirigeraClient::_set_power(const String& id, bool on) {
     HAEntity* e = find_entity(id);
     if (!e) return;
-    if (_patch(id, "[{\"attributes\":{\"isOn\":" + String(on ? "true" : "false") + "}}]")) {
-        e->state = on ? "on" : "off";
-        if (_on_update) _on_update(*e);
-    }
+    // Optimistic: update state and notify UI immediately — don't wait for HTTP round-trip.
+    // If the PATCH fails the next poll (5 s) will correct it.
+    e->state = on ? "on" : "off";
+    if (_on_update) _on_update(*e);
+    bool ok = _patch(id, "[{\"attributes\":{\"isOn\":" + String(on ? "true" : "false") + "}}]");
+    if (!ok) Serial.printf("[DIRIGERA] _set_power PATCH failed for %s\n", id.c_str());
 }
 
 void DirigeraClient::toggle(const String& id) {

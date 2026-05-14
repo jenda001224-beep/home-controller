@@ -147,15 +147,16 @@ void UI::set_grid_cols(uint8_t cols) {
     _grid_cols = (cols >= 1 && cols <= 3) ? cols : 2;
 }
 
-void UI::set_battery(int pct, bool charging) {
+void UI::set_battery(int pct, bool charging, float v) {
     if (!_bat_label) return;
     char buf[28];
     if (charging) {
-        snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %d%%", pct);
+        if (v >= 0) snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %.1fV", v);
+        else        snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %d%%", pct);
         lv_obj_set_style_text_color(_bat_label, C_GREEN, 0);
     } else {
-        snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
-        // Red below 20%, orange below 40%, gray otherwise
+        if (v >= 0) snprintf(buf, sizeof(buf), "%.1fV %d%%", v, pct);
+        else        snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
         lv_color_t col = (pct < 20) ? C_RED : (pct < 40) ? C_ACCENT : C_TEXT;
         lv_obj_set_style_text_color(_bat_label, col, 0);
     }
@@ -474,32 +475,6 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_set_style_text_color(_detail_title, C_TEXT, 0);
     lv_obj_align(_detail_title, LV_ALIGN_TOP_MID, 0, 26);
 
-    // Power row
-    // sw_row is just a transparent placeholder; the button fills it
-    lv_obj_t* sw_row = lv_obj_create(_detail_panel);
-    lv_obj_set_size(sw_row, TILE_W, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(sw_row, 0, 0);
-    lv_obj_set_style_border_width(sw_row, 0, 0);
-    lv_obj_set_style_pad_all(sw_row, 0, 0);
-    lv_obj_align(sw_row, LV_ALIGN_TOP_MID, 0, 58);
-    lv_obj_clear_flag(sw_row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(sw_row, LV_OBJ_FLAG_CLICKABLE);
-
-    // Big toggle button — plain tap, no swipe required
-    _detail_switch = lv_btn_create(sw_row);
-    lv_obj_set_size(_detail_switch, TILE_W, 56);
-    lv_obj_set_style_radius(_detail_switch, 14, 0);
-    lv_obj_set_style_shadow_width(_detail_switch, 0, 0);
-    lv_obj_set_style_border_width(_detail_switch, 0, 0);
-    lv_obj_set_style_bg_color(_detail_switch, e.is_on() ? C_ACCENT : C_BG3, 0);
-    lv_obj_set_style_bg_color(_detail_switch, e.is_on() ? C_ACCENT : C_BG2, LV_STATE_PRESSED);
-    lv_obj_t* sw_lbl = lv_label_create(_detail_switch);
-    lv_label_set_text(sw_lbl, e.is_on() ? LV_SYMBOL_POWER "  On" : LV_SYMBOL_POWER "  Off");
-    lv_obj_set_style_text_color(sw_lbl, e.is_on() ? lv_color_black() : C_TEXT2, 0);
-    lv_obj_set_style_text_font(sw_lbl, &lv_font_montserrat_18, 0);
-    lv_obj_align(sw_lbl, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(_detail_switch, _detail_switch_changed, LV_EVENT_SHORT_CLICKED, this);
-
     // ---- Brightness view ----
     _detail_bri_view = lv_obj_create(_detail_panel);
     lv_obj_set_size(_detail_bri_view, TFT_WIDTH, TFT_HEIGHT - 110);
@@ -508,6 +483,7 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_set_style_border_width(_detail_bri_view, 0, 0);
     lv_obj_set_style_pad_all(_detail_bri_view, 0, 0);
     lv_obj_clear_flag(_detail_bri_view, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(_detail_bri_view, LV_OBJ_FLAG_CLICKABLE);  // don't intercept button taps
 
     if (e.supports_brightness) {
         // Colour button above the pill — only if device supports colour.
@@ -558,11 +534,12 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_set_style_border_width(_detail_bri_pill, 0, LV_PART_INDICATOR);
         lv_obj_set_style_pad_all(_detail_bri_pill, 0, LV_PART_INDICATOR);
 
-        // Knob: transparent + huge padding so touching ANYWHERE on the pill starts dragging
+        // Knob: transparent, reasonable size (12px extra each side = easy to grab without
+        // leaking hit area outside the slider and stealing taps from nearby buttons)
         lv_obj_set_style_bg_opa(_detail_bri_pill, 0, LV_PART_KNOB);
         lv_obj_set_style_border_opa(_detail_bri_pill, 0, LV_PART_KNOB);
         lv_obj_set_style_shadow_width(_detail_bri_pill, 0, LV_PART_KNOB);
-        lv_obj_set_style_pad_all(_detail_bri_pill, PILL_H / 2, LV_PART_KNOB);  // knob covers full height
+        lv_obj_set_style_pad_all(_detail_bri_pill, 12, LV_PART_KNOB);
 
         // _detail_bri_fill kept null — lv_slider draws its own indicator
         _detail_bri_fill = nullptr;
@@ -583,6 +560,7 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_set_style_border_width(_detail_col_view, 0, 0);
         lv_obj_set_style_pad_all(_detail_col_view, 0, 0);
         lv_obj_clear_flag(_detail_col_view, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(_detail_col_view, LV_OBJ_FLAG_CLICKABLE);
         if (e.supports_brightness) lv_obj_add_flag(_detail_col_view, LV_OBJ_FLAG_HIDDEN);
 
         lv_obj_t* back_btn = lv_btn_create(_detail_col_view);
@@ -599,15 +577,32 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, 0);
         lv_obj_align(back_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
-        // Bigger wheel (260px) fills the screen width better; 32px ring = easy to grab
-        int wheel_sz = TFT_WIDTH - 60;   // 260px
+        // 200px wheel — fits comfortably below the back button with room to spare
+        int wheel_sz = 200;
         _detail_colorwheel = lv_colorwheel_create(_detail_col_view, true);
         lv_obj_set_size(_detail_colorwheel, wheel_sz, wheel_sz);
-        lv_obj_align(_detail_colorwheel, LV_ALIGN_TOP_MID, 0, 46);
+        lv_obj_align(_detail_colorwheel, LV_ALIGN_TOP_MID, 0, 50);
         lv_obj_set_style_arc_width(_detail_colorwheel, 32, LV_PART_MAIN);  // thick hue ring
         lv_colorwheel_set_rgb(_detail_colorwheel, lv_color_make(e.r, e.g, e.b));
         lv_obj_add_event_cb(_detail_colorwheel, _color_changed, LV_EVENT_VALUE_CHANGED, this);
     }
+
+    // ---- Toggle button — created LAST so it is highest in z-order ----
+    // LVGL hit-tests from last-created to first; the button wins over any view behind it.
+    _detail_switch = lv_btn_create(_detail_panel);
+    lv_obj_set_size(_detail_switch, TILE_W, 56);
+    lv_obj_align(_detail_switch, LV_ALIGN_TOP_MID, 0, 58);
+    lv_obj_set_style_radius(_detail_switch, 14, 0);
+    lv_obj_set_style_shadow_width(_detail_switch, 0, 0);
+    lv_obj_set_style_border_width(_detail_switch, 0, 0);
+    lv_obj_set_style_bg_color(_detail_switch, e.is_on() ? C_ACCENT : C_BG3, 0);
+    lv_obj_set_style_bg_color(_detail_switch, e.is_on() ? C_ACCENT : C_BG2, LV_STATE_PRESSED);
+    lv_obj_t* sw_lbl = lv_label_create(_detail_switch);
+    lv_label_set_text(sw_lbl, e.is_on() ? LV_SYMBOL_POWER "  On" : LV_SYMBOL_POWER "  Off");
+    lv_obj_set_style_text_color(sw_lbl, e.is_on() ? lv_color_black() : C_TEXT2, 0);
+    lv_obj_set_style_text_font(sw_lbl, &lv_font_montserrat_18, 0);
+    lv_obj_align(sw_lbl, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_event_cb(_detail_switch, _detail_switch_changed, LV_EVENT_SHORT_CLICKED, this);
 }
 
 void UI::_close_detail() {
@@ -709,10 +704,12 @@ void UI::_go_color_cb(lv_event_t* ev) {
     UI* self = (UI*)lv_event_get_user_data(ev);
     if (self->_detail_bri_view) lv_obj_add_flag(self->_detail_bri_view, LV_OBJ_FLAG_HIDDEN);
     if (self->_detail_col_view) lv_obj_clear_flag(self->_detail_col_view, LV_OBJ_FLAG_HIDDEN);
+    if (self->_detail_switch)   lv_obj_add_flag(self->_detail_switch, LV_OBJ_FLAG_HIDDEN);
 }
 
 void UI::_go_bri_cb(lv_event_t* ev) {
     UI* self = (UI*)lv_event_get_user_data(ev);
     if (self->_detail_col_view) lv_obj_add_flag(self->_detail_col_view, LV_OBJ_FLAG_HIDDEN);
     if (self->_detail_bri_view) lv_obj_clear_flag(self->_detail_bri_view, LV_OBJ_FLAG_HIDDEN);
+    if (self->_detail_switch)   lv_obj_clear_flag(self->_detail_switch, LV_OBJ_FLAG_HIDDEN);
 }

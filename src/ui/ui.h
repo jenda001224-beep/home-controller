@@ -13,7 +13,7 @@ public:
     void set_status(const char* msg);
     void go_home();
 
-    void set_battery(int pct, bool charging = false);
+    void set_battery(int pct, bool charging, float v = -1.0f);
     void set_grid_cols(uint8_t cols);
     uint8_t grid_cols() const { return _grid_cols; }
 

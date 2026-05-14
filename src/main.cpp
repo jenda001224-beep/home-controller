@@ -70,21 +70,27 @@ static void blink_led(int n, int on_ms = 150, int off_ms = 150) {
 // -- Battery + charging --
 
 static float read_battery_v() {
-    // Warmup read to settle ADC, then 8-sample average for stability
-    analogReadMilliVolts(PIN_BAT_ADC);
-    uint32_t mv = 0;
-    for (int i = 0; i < 8; i++) mv += analogReadMilliVolts(PIN_BAT_ADC);
-    float v = (mv / 8 / 1000.0f) * 2.0f;   // undo 1:2 voltage divider
-    Serial.printf("[BAT] raw_avg=%lumV  vbat=%.2fV\n", mv/8, v);
+    // analogReadMilliVolts returns 0 on boards without eFuse ADC calibration.
+    // Use raw analogRead() + manual linear scaling instead.
+    analogReadResolution(12);
+    analogSetPinAttenuation(PIN_BAT_ADC, ADC_11db);
+    // Settle after attenuation change, discard first few samples
+    for (int i = 0; i < 5; i++) { analogRead(PIN_BAT_ADC); delay(1); }
+    // 16-sample average
+    uint32_t raw = 0;
+    for (int i = 0; i < 16; i++) raw += analogRead(PIN_BAT_ADC);
+    raw /= 16;
+    // ESP32-S3, ADC_11db: full scale = 3100 mV (measured typical; datasheet says ~3.1 V)
+    float pin_mv = raw * 3100.0f / 4095.0f;
+    float v      = (pin_mv / 1000.0f) * 2.0f;   // undo 1:2 voltage divider
+    Serial.printf("[BAT] raw=%lu  pin_mv=%.0f  vbat=%.2fV\n", (unsigned long)raw, pin_mv, v);
     return v;
 }
-static int read_battery_pct() {
-    float v = read_battery_v();
-    return constrain((int)((v - 3.0f) / 1.2f * 100.0f), 0, 100);
-}
-// VBUS proxy: battery reads above ~4.1 V when USB is connected and charging
-static bool is_charging() {
-    return read_battery_v() > 4.10f;
+// Single call — returns pct and charging, passes voltage for display
+static void read_battery(int& pct, bool& charging, float& v) {
+    v        = read_battery_v();
+    pct      = constrain((int)((v - 3.0f) / 1.2f * 100.0f), 0, 100);
+    charging = (v > 4.30f);
 }
 
 // -- Deep sleep --
@@ -421,13 +427,14 @@ static void handle_settings_set() {
     app_srv.send(200,"application/json","{\"ok\":true}");
 }
 static void handle_ota_check() {
-    // Fetch version.json from GitHub Pages, inject current version, return to browser
     WiFiClientSecure vc;
     vc.setInsecure();
     HTTPClient http;
     http.begin(vc, "https://jenda001224-beep.github.io/home-controller/version.json");
-    http.setTimeout(8000);
+    http.setTimeout(12000);
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.addHeader("Cache-Control", "no-cache");
+    http.addHeader("User-Agent", "ESP32-SwitchPro/1.0");
     int code = http.GET();
     if (code == 200) {
         String body = http.getString();
@@ -441,10 +448,17 @@ static void handle_ota_check() {
             app_srv.send(200, "application/json", out);
             return;
         }
+        app_srv.send(200, "application/json",
+            "{\"error\":true,\"msg\":\"Bad response from server\",\"current\":\"" APP_VERSION "\"}");
+        return;
     }
+    String errMsg = (code < 0)
+        ? String(HTTPClient::errorToString(code))
+        : ("HTTP " + String(code));
     http.end();
+    Serial.printf("[OTA] check failed: %s\n", errMsg.c_str());
     app_srv.send(200, "application/json",
-        "{\"error\":true,\"msg\":\"Cannot reach update server\",\"current\":\"" APP_VERSION "\"}");
+        "{\"error\":true,\"msg\":\"" + errMsg + "\",\"current\":\"" APP_VERSION "\"}");
 }
 
 static void handle_ota_update() {
@@ -556,7 +570,7 @@ void setup() {
 
     dc.on_ready([&]() {
         ui.build_home();
-        ui.set_battery(read_battery_pct(), is_charging());  // show immediately
+        { int p; bool c; float v; read_battery(p, c, v); ui.set_battery(p, c, v); }
         g_sleep_enabled = true;
         g_last_activity = millis();
     });
@@ -588,7 +602,7 @@ void loop() {
         g_demo_pending = false;
         dc.on_ready([&]() {
             ui.build_home();
-            ui.set_battery(read_battery_pct(), is_charging());
+            { int p; bool c; float v; read_battery(p, c, v); ui.set_battery(p, c, v); }
             g_sleep_enabled = true;
             g_last_activity = millis();
         });
@@ -618,9 +632,9 @@ void loop() {
     // Battery + charging indicator (every 15 s)
     if (millis() - g_bat_last > 15000) {
         g_bat_last = millis();
-        int  pct      = read_battery_pct();
-        bool charging = is_charging();
-        ui.set_battery(pct, charging);
+        int pct; bool charging; float bv;
+        read_battery(pct, charging, bv);
+        ui.set_battery(pct, charging, bv);
         if (charging && !g_was_charging)
             blink_led(3, 80, 80);   // quick flash when USB plugged in
         g_was_charging = charging;
