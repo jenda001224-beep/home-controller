@@ -5,10 +5,16 @@
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <lvgl.h>
+#include <WiFiClientSecure.h>
+#include <HTTPUpdate.h>
 #include "config.h"
 #include "display/display.h"
 #include "dirigera/dirigera_client.h"
 #include "ui/ui.h"
+
+// OTA firmware URL (GitHub Pages)
+static const char* OTA_URL =
+    "https://jenda001224-beep.github.io/home-controller/firmware.bin";
 
 // -- Globals --
 
@@ -18,6 +24,7 @@ static UI             ui;
 static volatile bool g_update_pending = false;
 static HAEntity      g_pending_entity;
 static volatile bool g_demo_pending   = false;
+static volatile bool g_ota_pending    = false;
 
 // Sleep is only allowed after the home screen has been successfully built.
 // This prevents the startup/pairing screen from triggering deep sleep.
@@ -100,6 +107,46 @@ static void go_to_sleep() {
     Serial.println("Wake from light sleep");
 }
 
+// -- OTA update --
+
+static void do_ota_update() {
+    g_sleep_enabled = false;   // don't sleep while updating
+    g_last_activity = millis();
+
+    ui.set_status("Downloading update\nPlease wait...");
+    flush_ui(300);
+
+    WiFiClientSecure client;
+    client.setInsecure();                // skip cert check — home device, acceptable
+    httpUpdate.rebootOnUpdate(true);     // auto-reboot on success
+    httpUpdate.setLedPin(PIN_LED, HIGH);
+
+    httpUpdate.onStart([]() {
+        ui.set_status("Flashing firmware\nDo not unplug...");
+        lv_timer_handler();
+    });
+    httpUpdate.onProgress([](int cur, int tot) {
+        if (tot > 0) {
+            char buf[48];
+            snprintf(buf, sizeof(buf), "Updating %d%%\nDo not unplug...", cur * 100 / tot);
+            ui.set_status(buf);
+            lv_timer_handler();
+        }
+    });
+    httpUpdate.onEnd([]() {
+        ui.set_status("Done!\nRebooting...");
+        lv_timer_handler();
+    });
+
+    t_httpUpdate_return ret = httpUpdate.update(client, OTA_URL);
+    // Reach here only on failure (success = reboot)
+    String err = httpUpdate.getLastErrorString();
+    Serial.printf("[OTA] failed: %s\n", err.c_str());
+    ui.set_status(("Update failed:\n" + err).c_str());
+    flush_ui(4000);
+    g_sleep_enabled = true;
+}
+
 // -- DIRIGERA config storage --
 
 static String load_dirigera_ip()    { prefs.begin("hc_dr",true); String v=prefs.getString("ip","");    prefs.end(); return v; }
@@ -165,6 +212,11 @@ static String settings_card_html() {
     h += "<option value='3'" + String(cfg_grid_cols==3?" selected":"") + ">Compact (3 columns)</option>";
     h += "</select>";
     h += "<div class='status' id='ss'></div></div>";
+    // Firmware update card
+    h += "<div class='card'><h2>Firmware</h2>";
+    h += "<p style='font-size:13px;color:#8e8e93;margin-bottom:12px'>Current: <b style='color:#fff'>" APP_VERSION "</b></p>";
+    h += "<button class='btn' id='otabtn'>&#8635; Check for Updates</button>";
+    h += "<div class='status' id='otas'></div></div>";
     return h;
 }
 
@@ -184,6 +236,17 @@ static const char SETTINGS_JS[] PROGMEM =
     "  .then(function(d){s.textContent=d.ok?'Saved':'Error';"
     "    s.className='status '+(d.ok?'ok':'err');}).catch(function(){"
     "    s.textContent='Error';s.className='status err';});}"
+    "document.getElementById('otabtn').addEventListener('click',function(){"
+    "  var btn=this,s=document.getElementById('otas');"
+    "  btn.disabled=true;"
+    "  s.textContent='Starting update — watch device screen...';s.className='status';"
+    "  fetch('/ota_update').then(function(r){return r.json();})"
+    "  .then(function(d){"
+    "    s.textContent='Downloading... device will reboot when done.';s.className='status ok';"
+    "  }).catch(function(){"
+    "    s.textContent='Could not reach device';s.className='status err';"
+    "    btn.disabled=false;});"
+    "});"
     "</script>";
 
 static String page_setup() {
@@ -346,6 +409,13 @@ static void handle_settings_set() {
     if (changed) save_settings();
     app_srv.send(200,"application/json","{\"ok\":true}");
 }
+static void handle_ota_update() {
+    // Respond immediately so the browser gets feedback before we start
+    app_srv.send(200, "application/json",
+        "{\"ok\":true,\"msg\":\"Update started — watch the device screen\"}");
+    g_ota_pending = true;   // main loop picks this up
+}
+
 static void handle_settings_get() {
     app_srv.send(200,"application/json",
         "{\"brightness\":"+String(cfg_brightness)+
@@ -363,6 +433,7 @@ static void start_app_server() {
     app_srv.on("/status",       HTTP_GET, handle_status);
     app_srv.on("/settings_set", HTTP_GET, handle_settings_set);
     app_srv.on("/settings",     HTTP_GET, handle_settings_get);
+    app_srv.on("/ota_update",   HTTP_GET, handle_ota_update);
     app_srv.begin();
     Serial.println("App server on :80");
 }
@@ -472,6 +543,8 @@ void loop() {
         g_last_activity = millis();
 
     if (g_update_pending) { g_update_pending=false; ui.on_entity_update(g_pending_entity); }
+
+    if (g_ota_pending) { g_ota_pending = false; do_ota_update(); }
 
     if (g_demo_pending) {
         g_demo_pending = false;

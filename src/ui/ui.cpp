@@ -529,37 +529,43 @@ void UI::_show_detail(const String& entity_id) {
             pill_top = 52;   // push pill below the button
         }
 
-        // Vertical brightness pill — wider (120px) for easier touch
+        // Vertical lv_slider — native widget handles drag in both directions reliably.
+        // Width=120, height>width → LVGL treats it as vertical.
+        // Knob is made transparent and huge so touching anywhere on the pill works.
         const int PILL_W = 120;
         const int PILL_H = (TFT_HEIGHT - 110) - pill_top - 16;
         _detail_pill_h = PILL_H;
 
-        _detail_bri_pill = lv_obj_create(_detail_bri_view);
+        _detail_bri_pill = lv_slider_create(_detail_bri_view);
         lv_obj_set_size(_detail_bri_pill, PILL_W, PILL_H);
         lv_obj_align(_detail_bri_pill, LV_ALIGN_TOP_MID, 0, pill_top);
-        lv_obj_set_style_bg_color(_detail_bri_pill, C_BG2, 0);
-        lv_obj_set_style_bg_opa(_detail_bri_pill, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(_detail_bri_pill, PILL_W / 2, 0);
-        lv_obj_set_style_border_width(_detail_bri_pill, 0, 0);
-        lv_obj_set_style_pad_all(_detail_bri_pill, 0, 0);
-        lv_obj_clear_flag(_detail_bri_pill, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(_detail_bri_pill, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_ext_click_area(_detail_bri_pill, 30);  // 30px extra hit zone on all sides
+        lv_slider_set_range((lv_obj_t*)_detail_bri_pill, 1, 255);
+        lv_slider_set_value((lv_obj_t*)_detail_bri_pill, (int)e.brightness, LV_ANIM_OFF);
 
-        // Fill (orange, from bottom)
-        int fill_h = (int)((int)e.brightness * PILL_H / 255);
-        if (fill_h < 40) fill_h = 40;
-        _detail_bri_fill = lv_obj_create(_detail_bri_pill);
-        lv_obj_set_size(_detail_bri_fill, PILL_W, fill_h);
-        lv_obj_align(_detail_bri_fill, LV_ALIGN_BOTTOM_MID, 0, 0);
-        lv_obj_set_style_bg_color(_detail_bri_fill, C_ACCENT, 0);
-        lv_obj_set_style_bg_opa(_detail_bri_fill, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(_detail_bri_fill, PILL_W / 2, 0);
-        lv_obj_set_style_border_width(_detail_bri_fill, 0, 0);
-        lv_obj_set_style_pad_all(_detail_bri_fill, 0, 0);
+        // Track (dark pill background)
+        lv_obj_set_style_bg_color(_detail_bri_pill, C_BG2, LV_PART_MAIN);
+        lv_obj_set_style_radius(_detail_bri_pill, PILL_W / 2, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_detail_bri_pill, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(_detail_bri_pill, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(_detail_bri_pill, 0, LV_PART_MAIN);
 
-        // Drag only — NO colour switch on tap (use the button above)
-        lv_obj_add_event_cb(_detail_bri_pill, _bri_drag_cb, LV_EVENT_PRESSING, this);
+        // Indicator (orange fill from bottom)
+        lv_obj_set_style_bg_color(_detail_bri_pill, C_ACCENT, LV_PART_INDICATOR);
+        lv_obj_set_style_radius(_detail_bri_pill, PILL_W / 2, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_opa(_detail_bri_pill, LV_OPA_COVER, LV_PART_INDICATOR);
+        lv_obj_set_style_border_width(_detail_bri_pill, 0, LV_PART_INDICATOR);
+        lv_obj_set_style_pad_all(_detail_bri_pill, 0, LV_PART_INDICATOR);
+
+        // Knob: transparent + huge padding so touching ANYWHERE on the pill starts dragging
+        lv_obj_set_style_bg_opa(_detail_bri_pill, 0, LV_PART_KNOB);
+        lv_obj_set_style_border_opa(_detail_bri_pill, 0, LV_PART_KNOB);
+        lv_obj_set_style_shadow_width(_detail_bri_pill, 0, LV_PART_KNOB);
+        lv_obj_set_style_pad_all(_detail_bri_pill, PILL_H / 2, LV_PART_KNOB);  // knob covers full height
+
+        // _detail_bri_fill kept null — lv_slider draws its own indicator
+        _detail_bri_fill = nullptr;
+
+        lv_obj_add_event_cb(_detail_bri_pill, _bri_slider_cb, LV_EVENT_VALUE_CHANGED, this);
     } else if (!e.supports_brightness && e.supports_color) {
         lv_obj_add_flag(_detail_bri_view, LV_OBJ_FLAG_HIDDEN);
     }
@@ -620,12 +626,8 @@ void UI::_detail_update(const HAEntity& e) {
         if (e.is_on()) lv_obj_add_state(_detail_switch, LV_STATE_CHECKED);
         else           lv_obj_clear_state(_detail_switch, LV_STATE_CHECKED);
     }
-    if (_detail_bri_fill && _detail_bri_pill && e.supports_brightness) {
-        int fill_h = (int)((int)e.brightness * _detail_pill_h / 255);
-        if (fill_h < 40) fill_h = 40;
-        lv_obj_set_height(_detail_bri_fill, fill_h);
-        lv_obj_align(_detail_bri_fill, LV_ALIGN_BOTTOM_MID, 0, 0);
-        lv_obj_invalidate(_detail_bri_pill);
+    if (_detail_bri_pill && e.supports_brightness) {
+        lv_slider_set_value(_detail_bri_pill, (int)e.brightness, LV_ANIM_OFF);
     }
     if (_detail_colorwheel && e.supports_color)
         lv_colorwheel_set_rgb(_detail_colorwheel, lv_color_make(e.r, e.g, e.b));
@@ -657,35 +659,12 @@ void UI::_detail_switch_changed(lv_event_t* ev) {
     }
 }
 
-void UI::_bri_drag_cb(lv_event_t* ev) {
+void UI::_bri_slider_cb(lv_event_t* ev) {
+    // Native lv_slider VALUE_CHANGED — fires reliably in both drag directions
     UI* self = (UI*)lv_event_get_user_data(ev);
-    if (!self->_detail_bri_pill || !self->_detail_bri_fill) return;
-
-    lv_indev_t* indev = lv_indev_get_act();
-    if (!indev) return;
-    lv_point_t pt;
-    lv_indev_get_point(indev, &pt);
-
-    lv_area_t pill_area;
-    lv_obj_get_coords(self->_detail_bri_pill, &pill_area);
-    lv_coord_t pill_top = pill_area.y1;
-    lv_coord_t rel_y    = pt.y - pill_top;
-    int ph = self->_detail_pill_h;
-    if (rel_y < 0)  rel_y = 0;
-    if (rel_y > ph) rel_y = ph;
-
-    // Top = 100%, bottom = 0%
-    uint8_t bri = (uint8_t)(255 - (rel_y * 255 / ph));
-    if (bri < 1)   bri = 1;
-    if (bri > 255) bri = 255;
-
-    int fill_h = (int)(bri * ph / 255);
-    if (fill_h < 40) fill_h = 40;
-    lv_obj_set_height(self->_detail_bri_fill, fill_h);
-    lv_obj_align(self->_detail_bri_fill, LV_ALIGN_BOTTOM_MID, 0, 0);
-    // Force full pill redraw — without this, shrinking the fill leaves ghost pixels
-    lv_obj_invalidate(self->_detail_bri_pill);
-
+    if (!self->_detail_bri_pill) return;
+    int val = lv_slider_get_value(self->_detail_bri_pill);
+    uint8_t bri = (uint8_t)constrain(val, 1, 255);
     if (self->_dc && !self->_detail_entity_id.isEmpty())
         self->_dc->set_brightness(self->_detail_entity_id, bri);
 }
