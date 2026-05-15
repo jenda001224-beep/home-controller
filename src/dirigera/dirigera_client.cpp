@@ -292,6 +292,7 @@ void DirigeraClient::_ensure_tasks() {
 // ── Async PATCH helper ───────────────────────────────────────────────────────
 
 bool DirigeraClient::_patch(const String& device_id, const String& body) {
+    if (!s_patch_q) return false;   // demo mode — no queue, skip silently
     PatchJob job;
     String url = "https://" + _hub_ip + ":8443/v1/devices/" + device_id;
     url.toCharArray (job.url,  sizeof(job.url));
