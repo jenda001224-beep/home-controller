@@ -446,8 +446,9 @@ void UI::_show_detail(const String& entity_id) {
     lv_obj_set_style_border_width(_detail_panel, 0, 0);
     lv_obj_set_style_pad_all(_detail_panel, 0, 0);
     lv_obj_clear_flag(_detail_panel, LV_OBJ_FLAG_SCROLLABLE);
+    // Absorb touches so they don't pass through to home screen tiles.
+    // Do NOT register a close callback here — the only way to close is the ✕ button.
     lv_obj_add_flag(_detail_panel, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(_detail_panel, _close_detail_cb, LV_EVENT_SHORT_CLICKED, this);
 
     // Handle bar (drag indicator)
     lv_obj_t* handle = lv_obj_create(_detail_panel);

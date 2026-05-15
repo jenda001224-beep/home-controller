@@ -572,6 +572,11 @@ void setup() {
     String dip  = load_dirigera_ip();
     String dtok = load_dirigera_token();
 
+    // Register update callback unconditionally — needed for demo mode too.
+    // (In demo, _set_power / set_brightness call _on_update directly on main thread;
+    //  without this the UI never reflects on/off or slider changes.)
+    dc.on_update([&](const HAEntity& e) { g_pending_entity = e; g_update_pending = true; });
+
     if (dip.isEmpty() || dtok.isEmpty()) {
         ui.set_status(("Pair DIRIGERA:\nhttp://" + WiFi.localIP().toString()).c_str());
         flush_ui(50);
@@ -587,7 +592,6 @@ void setup() {
         g_sleep_enabled = true;
         g_last_activity = millis();
     });
-    dc.on_update([&](const HAEntity& e) { g_pending_entity = e; g_update_pending = true; });
     dc.begin(dip, dtok);
 }
 

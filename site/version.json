@@ -1,8 +1,8 @@
 {
-  "version": "v5.37",
+  "version": "v5.38",
   "changes": [
-    "Crash demo módu opraven — xQueueSend(NULL) při pohybu sliderem",
-    "Crash detail panelu opraven — smyčka slider→callback→slider přerušena guard flagem",
-    "Baterie při nabíjení zobrazí ⚡ + procenta místo USB"
+    "On/Off tlačítka fungují v demo módu — dc.on_update nastaven i bez DIRIGERA",
+    "Detail panel se nezavírá tapem mimo colorwheel — zavírá jen tlačítko ✕",
+    "Crash demo módu opraven — xQueueSend(NULL) při pohybu sliderem"
   ]
 }
