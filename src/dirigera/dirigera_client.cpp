@@ -212,13 +212,16 @@ void DirigeraClient::_fetch_devices() {
     // ── Merge under mutex ────────────────────────────────────────
     xSemaphoreTake(_mutex, portMAX_DELAY);
 
-    bool first_load = _entities.empty();
+    // Use _fetched_once (not _entities.empty()) so on_ready fires exactly once
+    // even when DIRIGERA returns 0 LIGHT/OUTLET devices (empty new_entities).
+    bool first_load = !_fetched_once;
 
     if (first_load) {
+        _fetched_once = true;
         _areas    = new_areas;
         _entities = new_entities;
         xSemaphoreGive(_mutex);
-        _ready_pending = true;   // main thread will call _on_ready()
+        _ready_pending = true;   // main thread will call _on_ready() once
         return;
     }
 

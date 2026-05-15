@@ -62,7 +62,8 @@ private:
 
     // Background worker signals main thread via these flags/buffers —
     // written by fetch task (core 0), read+cleared by loop() (core 1).
-    volatile bool _ready_pending = false;
+    volatile bool _ready_pending  = false;
+    volatile bool _fetched_once   = false;  // set on first fetch; prevents repeated on_ready
 
     static const int MAX_UPD = 8;
     char _upd_ids[MAX_UPD][64];   // entity_ids that changed in last fetch

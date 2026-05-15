@@ -116,6 +116,12 @@ void UI::set_status(const char* msg) {
 void UI::build_home() {
     _close_detail();   // must happen before _scr_home is deleted
     if (_scr_home) {
+        // If _scr_home is the currently displayed screen, switch away first.
+        // Deleting the active screen while LVGL holds a pointer to it causes LoadProhibited.
+        if (lv_scr_act() == _scr_home) {
+            lv_obj_t* safe = _scr_splash ? _scr_splash : lv_obj_create(nullptr);
+            lv_scr_load(safe);
+        }
         lv_obj_del(_scr_home);
         _scr_home  = nullptr;
         _tabview   = nullptr;
@@ -277,7 +283,19 @@ void UI::_build_tabs() {
         lv_obj_t* tab = lv_tabview_add_tab(_tabview, "All");
         lv_obj_t* g   = make_grid(tab);
         _grids.push_back(g);
-        for (const auto& e : entities) _add_tile(g, e);
+        if (entities.empty()) {
+            // No supported devices (LIGHT / OUTLET) found on the hub.
+            lv_obj_t* lbl = lv_label_create(g);
+            lv_label_set_text(lbl, "No devices found.\n\nMake sure your DIRIGERA\nhas lights or outlets.");
+            lv_obj_set_style_text_color(lbl, C_TEXT2, 0);
+            lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_set_width(lbl, TILE_W);
+            lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+            lv_obj_align(lbl, LV_ALIGN_TOP_MID, 0, 40);
+        } else {
+            for (const auto& e : entities) _add_tile(g, e);
+        }
     } else {
         for (const auto& area : areas) {
             int count = 0;
