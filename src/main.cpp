@@ -475,7 +475,7 @@ static void handle_ota_check() {
     if (code == 200) {
         String body = http.getString();
         http.end();
-        DynamicJsonDocument doc(512);
+        DynamicJsonDocument doc(1024);
         if (deserializeJson(doc, body) == DeserializationError::Ok) {
             String latest = doc["version"] | String("");
             doc["current"]          = APP_VERSION;
