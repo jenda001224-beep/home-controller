@@ -41,6 +41,7 @@ private:
     int       _detail_pill_h     = 0;         // cached pill height for drag calc
     uint32_t  _bri_last_send_ms  = 0;         // throttle brightness HTTP sends
     uint32_t  _col_last_send_ms  = 0;         // throttle colour HTTP sends
+    bool      _detail_updating   = false;     // guard: programmatic slider/wheel update in progress
 
     struct TileRef {
         String    entity_id;

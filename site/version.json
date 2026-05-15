@@ -1,7 +1,7 @@
 {
-  "version": "v5.35",
+  "version": "v5.36",
   "changes": [
-    "Crash v detail panelu opraven — mutex nebyl blokující z LVGL callbacku",
-    "Baterie — ikona symbolu + procenta, blesk při nabíjení"
+    "Crash detail panelu opraven — smyčka slider→callback→slider přerušena guard flagem",
+    "Baterie při nabíjení zobrazí ⚡ + procenta místo USB"
   ]
 }

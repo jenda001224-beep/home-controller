@@ -151,22 +151,22 @@ void UI::set_battery(int pct, bool charging, float v) {
     if (!_bat_label) return;
     char buf[20];
 
-    if (charging) {
-        // USB connected — bolt symbol
-        lv_label_set_text(_bat_label, LV_SYMBOL_CHARGE " USB");
-        lv_obj_set_style_text_color(_bat_label, C_GREEN, 0);
-        return;
-    }
     if (v < 0) {
         // PMU not available
         lv_label_set_text(_bat_label, "--");
         lv_obj_set_style_text_color(_bat_label, C_TEXT2, 0);
         return;
     }
-    // On battery: icon + percent
-    snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
-    lv_color_t col = (pct < 20) ? C_RED : (pct < 40) ? C_ACCENT : C_TEXT;
-    lv_obj_set_style_text_color(_bat_label, col, 0);
+    if (charging) {
+        // USB connected: bolt + percent
+        snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %d%%", pct);
+        lv_obj_set_style_text_color(_bat_label, C_GREEN, 0);
+    } else {
+        // On battery: icon + percent
+        snprintf(buf, sizeof(buf), "%s %d%%", bat_icon(pct), pct);
+        lv_color_t col = (pct < 20) ? C_RED : (pct < 40) ? C_ACCENT : C_TEXT;
+        lv_obj_set_style_text_color(_bat_label, col, 0);
+    }
     lv_label_set_text(_bat_label, buf);
 }
 
@@ -642,11 +642,15 @@ void UI::_detail_update(const HAEntity& e) {
             lv_obj_set_style_text_color(lbl, on ? lv_color_black() : C_TEXT2, 0);
         }
     }
-    if (_detail_bri_pill && e.supports_brightness) {
+    // Guard: lv_slider_set_value and lv_colorwheel_set_rgb fire VALUE_CHANGED
+    // synchronously, which would re-enter _bri_slider_cb / _color_changed and
+    // call set_brightness / set_color → _on_update → infinite loop → watchdog.
+    _detail_updating = true;
+    if (_detail_bri_pill && e.supports_brightness)
         lv_slider_set_value(_detail_bri_pill, (int)e.brightness, LV_ANIM_OFF);
-    }
     if (_detail_colorwheel && e.supports_color)
         lv_colorwheel_set_rgb(_detail_colorwheel, lv_color_make(e.r, e.g, e.b));
+    _detail_updating = false;
 }
 
 // -- Event callbacks --
@@ -677,6 +681,7 @@ void UI::_detail_switch_changed(lv_event_t* ev) {
 
 void UI::_bri_slider_cb(lv_event_t* ev) {
     UI* self = (UI*)lv_event_get_user_data(ev);
+    if (self->_detail_updating) return;  // programmatic update — don't echo back
     if (!self->_detail_bri_pill || !self->_dc || self->_detail_entity_id.isEmpty()) return;
 
     int val = lv_slider_get_value(self->_detail_bri_pill);
@@ -693,6 +698,7 @@ void UI::_bri_slider_cb(lv_event_t* ev) {
 
 void UI::_color_changed(lv_event_t* ev) {
     UI* self     = (UI*)lv_event_get_user_data(ev);
+    if (self->_detail_updating) return;  // programmatic update — don't echo back
     lv_obj_t* cw = lv_event_get_target(ev);
     lv_color_t c = lv_colorwheel_get_rgb(cw);
     lv_color32_t c32;

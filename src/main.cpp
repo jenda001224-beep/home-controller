@@ -102,15 +102,11 @@ static void read_battery(int& pct, bool& charging, float& v) {
     charging    = pmu.isVbusIn();
     int batt_mv = pmu.getBattVoltage();
 
-    if (charging) {
-        // Can't trust VBAT when USB in — show "USB" instead of bogus voltage
-        v   = -1.0f;
-        pct = 0;
-    } else {
-        v   = batt_mv / 1000.0f;
-        // Linear 3400–4200 mV = 0–100 % (conservative; full charge target is 4352 mV)
-        pct = constrain((int)((batt_mv - 3400) * 100 / 800), 0, 100);
-    }
+    // Use battery voltage regardless of VBUS — may be slightly inaccurate while
+    // charging but gives user a useful indication. Linear 3400–4200 mV = 0–100 %.
+    v   = batt_mv / 1000.0f;
+    pct = constrain((int)((batt_mv - 3400) * 100 / 800), 0, 100);
+
     Serial.printf("[PMU] vbus=%s vbat=%d mV pct=%d\n",
                   charging ? "yes" : "no", batt_mv, pct);
 }
