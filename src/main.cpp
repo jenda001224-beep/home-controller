@@ -510,6 +510,40 @@ static void handle_settings_get() {
         ",\"grid\":"+String(cfg_grid_cols)+"}");
 }
 
+// Diagnostic: proxy a raw DIRIGERA /v1/devices request and return the response.
+// Lets us see exactly what DIRIGERA sends (or why it fails) without serial output.
+static void handle_proxy_dirigera() {
+    String dip  = load_dirigera_ip();
+    String dtok = load_dirigera_token();
+    if (dip.isEmpty() || dtok.isEmpty()) {
+        app_srv.send(200, "application/json", "{\"error\":\"no credentials stored\"}");
+        return;
+    }
+    WiFiClientSecure vc;
+    vc.setInsecure();
+    HTTPClient http;
+    String url = "https://" + dip + ":8443/v1/devices";
+    http.begin(vc, url);
+    http.addHeader("Authorization", "Bearer " + dtok);
+    http.addHeader("Accept", "application/json");
+    http.setTimeout(8000);
+    int code = http.GET();
+    String body = http.getString();
+    http.end();
+    // Return HTTP code + first 3000 chars of response body
+    String out = "{\"http_code\":" + String(code) +
+                 ",\"body_len\":" + String(body.length()) +
+                 ",\"body_preview\":\"";
+    // Escape quotes in body preview
+    String preview = body.substring(0, 3000);
+    preview.replace("\\", "\\\\");
+    preview.replace("\"", "\\\"");
+    preview.replace("\n", "\\n");
+    preview.replace("\r", "");
+    out += preview + "\"}";
+    app_srv.send(200, "application/json", out);
+}
+
 static void start_app_server() {
     app_srv.on("/",             HTTP_GET, handle_root);
     app_srv.on("/pair_start",   HTTP_GET, handle_pair_start);
@@ -520,8 +554,9 @@ static void start_app_server() {
     app_srv.on("/status",       HTTP_GET, handle_status);
     app_srv.on("/settings_set", HTTP_GET, handle_settings_set);
     app_srv.on("/settings",     HTTP_GET, handle_settings_get);
-    app_srv.on("/ota_check",    HTTP_GET, handle_ota_check);
-    app_srv.on("/ota_update",   HTTP_GET, handle_ota_update);
+    app_srv.on("/ota_check",        HTTP_GET, handle_ota_check);
+    app_srv.on("/ota_update",       HTTP_GET, handle_ota_update);
+    app_srv.on("/proxy_dirigera",   HTTP_GET, handle_proxy_dirigera);
     app_srv.begin();
     Serial.println("App server on :80");
 }
