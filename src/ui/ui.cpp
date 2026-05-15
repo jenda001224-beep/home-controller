@@ -15,6 +15,21 @@ static const char* entity_icon(const HAEntity& e) {
     return LV_SYMBOL_SETTINGS;
 }
 
+// Extract hue (0-359) from RGB — used for the hue slider initial position
+static uint16_t rgb_to_hue(uint8_t r, uint8_t g, uint8_t b) {
+    float rf = r / 255.f, gf = g / 255.f, bf = b / 255.f;
+    float mx = (rf > gf) ? ((rf > bf) ? rf : bf) : ((gf > bf) ? gf : bf);
+    float mn = (rf < gf) ? ((rf < bf) ? rf : bf) : ((gf < bf) ? gf : bf);
+    float d  = mx - mn;
+    if (d < 0.001f) return 0;
+    float h;
+    if      (mx == rf) h = 60.f * fmodf((gf - bf) / d, 6.f);
+    else if (mx == gf) h = 60.f * ((bf - rf) / d + 2.f);
+    else               h = 60.f * ((rf - gf) / d + 4.f);
+    if (h < 0) h += 360.f;
+    return (uint16_t)h;
+}
+
 static const char* bat_icon(int pct) {
     if (pct > 80) return LV_SYMBOL_BATTERY_FULL;
     if (pct > 55) return LV_SYMBOL_BATTERY_3;
@@ -585,13 +600,71 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, 0);
         lv_obj_align(back_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
-        // 200px wheel — fits comfortably below the back button with room to spare
-        int wheel_sz = 200;
-        _detail_colorwheel = lv_colorwheel_create(_detail_col_view, true);
-        lv_obj_set_size(_detail_colorwheel, wheel_sz, wheel_sz);
-        lv_obj_align(_detail_colorwheel, LV_ALIGN_TOP_MID, 0, 50);
-        lv_obj_set_style_arc_width(_detail_colorwheel, 32, LV_PART_MAIN);  // thick hue ring
-        lv_colorwheel_set_rgb(_detail_colorwheel, lv_color_make(e.r, e.g, e.b));
+        // Hue pill — same visual style as brightness pill but with rainbow gradient.
+        // Back button sits at y=0 (h=36), pill starts at y=44.
+        const int HUE_W = 120;
+        const int HUE_H = (TFT_HEIGHT - 110) - 44 - 8;   // available height minus margins
+
+        // ── Rainbow background: N colour bands clipped to pill shape ──────────
+        lv_obj_t* hue_bg = lv_obj_create(_detail_col_view);
+        lv_obj_set_size(hue_bg, HUE_W, HUE_H);
+        lv_obj_align(hue_bg, LV_ALIGN_TOP_MID, 0, 44);
+        lv_obj_set_style_radius(hue_bg, HUE_W / 2, 0);
+        lv_obj_set_style_clip_corner(hue_bg, true, 0);
+        lv_obj_set_style_border_width(hue_bg, 0, 0);
+        lv_obj_set_style_pad_all(hue_bg, 0, 0);
+        lv_obj_set_style_bg_opa(hue_bg, 0, 0);
+        lv_obj_clear_flag(hue_bg, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+        static constexpr int HUE_BANDS = 36;   // 10° per band
+        for (int i = 0; i < HUE_BANDS; i++) {
+            int y0 = HUE_H *  i      / HUE_BANDS;
+            int y1 = HUE_H * (i + 1) / HUE_BANDS + 1;   // +1 fills 1-px rounding gaps
+            lv_color_t col = lv_color_hsv_to_rgb((uint16_t)(360 * i / HUE_BANDS), 100, 100);
+            lv_obj_t* band = lv_obj_create(hue_bg);
+            lv_obj_set_pos(band, 0, y0);
+            lv_obj_set_size(band, HUE_W, y1 - y0);
+            lv_obj_set_style_bg_color(band, col, 0);
+            lv_obj_set_style_bg_opa(band, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(band, 0, 0);
+            lv_obj_set_style_radius(band, 0, 0);
+            lv_obj_set_style_pad_all(band, 0, 0);
+            lv_obj_clear_flag(band, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        }
+
+        // ── Hue slider: transparent track, white horizontal-bar knob ──────────
+        // Sits exactly on top of hue_bg to intercept drag events.
+        _detail_colorwheel = lv_slider_create(_detail_col_view);
+        lv_obj_set_size(_detail_colorwheel, HUE_W, HUE_H);
+        lv_obj_align(_detail_colorwheel, LV_ALIGN_TOP_MID, 0, 44);
+        lv_slider_set_range(_detail_colorwheel, 0, 359);
+        lv_slider_set_value(_detail_colorwheel, (int)rgb_to_hue(e.r, e.g, e.b), LV_ANIM_OFF);
+
+        // Track — fully transparent (rainbow shows through)
+        lv_obj_set_style_bg_opa    (_detail_colorwheel, 0, LV_PART_MAIN);
+        lv_obj_set_style_border_opa(_detail_colorwheel, 0, LV_PART_MAIN);
+        lv_obj_set_style_shadow_width(_detail_colorwheel, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all   (_detail_colorwheel, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius    (_detail_colorwheel, HUE_W / 2, LV_PART_MAIN);
+
+        // Indicator — transparent
+        lv_obj_set_style_bg_opa    (_detail_colorwheel, 0, LV_PART_INDICATOR);
+        lv_obj_set_style_border_opa(_detail_colorwheel, 0, LV_PART_INDICATOR);
+        lv_obj_set_style_pad_all   (_detail_colorwheel, 0, LV_PART_INDICATOR);
+
+        // Knob — white semi-transparent horizontal bar (negative pad shrinks height)
+        lv_obj_set_style_bg_color  (_detail_colorwheel, lv_color_white(), LV_PART_KNOB);
+        lv_obj_set_style_bg_opa    (_detail_colorwheel, LV_OPA_70,        LV_PART_KNOB);
+        lv_obj_set_style_radius    (_detail_colorwheel, 4,                LV_PART_KNOB);
+        lv_obj_set_style_border_width(_detail_colorwheel, 0,              LV_PART_KNOB);
+        lv_obj_set_style_shadow_width(_detail_colorwheel, 8,              LV_PART_KNOB);
+        lv_obj_set_style_shadow_color(_detail_colorwheel, lv_color_black(),LV_PART_KNOB);
+        lv_obj_set_style_shadow_opa  (_detail_colorwheel, LV_OPA_40,      LV_PART_KNOB);
+        lv_obj_set_style_pad_left  (_detail_colorwheel, 0,   LV_PART_KNOB);  // full width
+        lv_obj_set_style_pad_right (_detail_colorwheel, 0,   LV_PART_KNOB);
+        lv_obj_set_style_pad_top   (_detail_colorwheel, -50, LV_PART_KNOB);  // thin bar
+        lv_obj_set_style_pad_bottom(_detail_colorwheel, -50, LV_PART_KNOB);
+
         // VALUE_CHANGED fires on every pixel of drag — throttle HTTP to 500 ms.
         // RELEASED sends a final accurate value when the finger lifts.
         lv_obj_add_event_cb(_detail_colorwheel, _color_changed, LV_EVENT_VALUE_CHANGED, this);
@@ -650,7 +723,7 @@ void UI::_detail_update(const HAEntity& e) {
     if (_detail_bri_pill && e.supports_brightness)
         lv_slider_set_value(_detail_bri_pill, (int)e.brightness, LV_ANIM_OFF);
     if (_detail_colorwheel && e.supports_color)
-        lv_colorwheel_set_rgb(_detail_colorwheel, lv_color_make(e.r, e.g, e.b));
+        lv_slider_set_value(_detail_colorwheel, (int)rgb_to_hue(e.r, e.g, e.b), LV_ANIM_OFF);
     _detail_updating = false;
 }
 
@@ -698,20 +771,24 @@ void UI::_bri_slider_cb(lv_event_t* ev) {
 }
 
 void UI::_color_changed(lv_event_t* ev) {
-    UI* self     = (UI*)lv_event_get_user_data(ev);
+    UI* self = (UI*)lv_event_get_user_data(ev);
     if (self->_detail_updating) return;  // programmatic update — don't echo back
-    lv_obj_t* cw = lv_event_get_target(ev);
-    lv_color_t c = lv_colorwheel_get_rgb(cw);
+    if (!self->_detail_colorwheel || !self->_dc || self->_detail_entity_id.isEmpty()) return;
+
+    // _detail_colorwheel is now a hue slider (0–359).
+    // Convert hue → RGB at full saturation/brightness; the brightness slider handles dimming.
+    int hue = lv_slider_get_value(self->_detail_colorwheel);
+    lv_color_t lvc = lv_color_hsv_to_rgb((uint16_t)hue, 100, 100);
     lv_color32_t c32;
-    c32.full = lv_color_to32(c);
+    c32.full = lv_color_to32(lvc);
+
     bool released = (lv_event_get_code(ev) == LV_EVENT_RELEASED);
     uint32_t now  = millis();
     // Send on finger release OR at most every 500 ms while dragging
     if (released || now - self->_col_last_send_ms >= 500) {
         self->_col_last_send_ms = now;
-        if (self->_dc && !self->_detail_entity_id.isEmpty())
-            self->_dc->set_color(self->_detail_entity_id,
-                                 c32.ch.red, c32.ch.green, c32.ch.blue);
+        self->_dc->set_color(self->_detail_entity_id,
+                             c32.ch.red, c32.ch.green, c32.ch.blue);
     }
 }
 

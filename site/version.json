@@ -1,8 +1,8 @@
 {
-  "version": "v5.38",
+  "version": "v5.39",
   "changes": [
-    "On/Off tlačítka fungují v demo módu — dc.on_update nastaven i bez DIRIGERA",
-    "Detail panel se nezavírá tapem mimo colorwheel — zavírá jen tlačítko ✕",
-    "Crash demo módu opraven — xQueueSend(NULL) při pohybu sliderem"
+    "Colorwheel nahrazen duhovým hue sliderem — bílý pruh jako knob, stejný styl jako brightness",
+    "On/Off tlačítka fungují v demo módu",
+    "Detail panel se nezavírá tapem mimo ovládací prvky"
   ]
 }
