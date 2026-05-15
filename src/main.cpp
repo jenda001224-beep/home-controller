@@ -18,6 +18,12 @@
 static const char* OTA_URL =
     "https://jenda001224-beep.github.io/home-controller/firmware.bin";
 
+// -- RTC memory: survives deep sleep, cleared on power-cycle / hard reset --
+// Used to skip the slow WiFiManager path after a normal wake-up.
+RTC_DATA_ATTR static bool    rtc_wifi_valid = false;
+RTC_DATA_ATTR static uint8_t rtc_channel    = 0;
+RTC_DATA_ATTR static uint8_t rtc_bssid[6]  = {0};
+
 // -- Globals --
 
 static DirigeraClient dc;
@@ -114,21 +120,31 @@ static void read_battery(int& pct, bool& charging, float& v) {
 // -- Deep sleep --
 
 static void go_to_sleep() {
-    Serial.println("Light sleep...");
+    Serial.println("Deep sleep...");
+
+    // Cache connected AP info so setup() can reconnect in ~2 s instead of ~8 s.
+    if (WiFi.status() == WL_CONNECTED) {
+        memcpy(rtc_bssid, WiFi.BSSID(), 6);
+        rtc_channel   = (uint8_t)WiFi.channel();
+        rtc_wifi_valid = true;
+    } else {
+        rtc_wifi_valid = false;
+    }
+
     display_set_brightness(0);
     flush_ui(50);
+
+    // Wait up to 500 ms for touch to release — prevents immediate re-wake.
+    for (int i = 0; i < 50 && digitalRead(PIN_TOUCH_INT) == LOW; i++) delay(10);
 
     uint64_t mask = (1ULL << PIN_BOOT_BTN) | (1ULL << PIN_BTN1) |
                     (1ULL << PIN_BTN2)      | (1ULL << PIN_TOUCH_INT);
     esp_sleep_enable_ext1_wakeup(mask, ESP_EXT1_WAKEUP_ANY_LOW);
 
-    // Light sleep: CPU and RAM are preserved. Execution resumes here on wake.
-    esp_light_sleep_start();
-
-    // --- woke up ---
-    g_last_activity = millis();
-    display_set_brightness(cfg_brightness);
-    Serial.println("Wake from light sleep");
+    // Deep sleep: CPU + RAM off, only RTC domain powered (~30 µA chip, ~1 mA PMU).
+    // Wake causes a full reset — setup() runs from the beginning.
+    esp_deep_sleep_start();
+    // does not return
 }
 
 // -- OTA update --
@@ -543,28 +559,54 @@ void setup() {
         }
     }
 
-    // WiFi
-    ui.set_status("Connecting to WiFi...");
-    flush_ui(50);
-    WiFiManager wm;
-    wm.setTitle(APP_NAME);
-    wm.setDarkMode(true);
-    wm.setCustomHeadElement(
-        "<style>"
-        "body,div,form,section{background:#1c1c1e!important;color:#fff!important}"
-        ".wrap,.main{background:#2c2c2e!important;border:1px solid #38383a!important;box-shadow:none!important}"
-        "h1,h2,h3,p,label,li{color:#fff!important}"
-        "input{background:#3a3a3c!important;border:1px solid #48484a!important;color:#fff!important;border-radius:10px!important}"
-        "button,input[type=submit]{background:#ff9500!important;color:#fff!important;border:none!important;border-radius:12px!important}"
-        "a,a:visited{color:#ff9500!important}"
-        "</style>"
-    );
-    wm.setConfigPortalBlocking(false);
-    if (!wm.autoConnect(SETUP_AP_NAME)) {
-        ui.set_status("WiFi setup:\nJoin " SETUP_AP_NAME "\nOpen Safari:\nhttp://192.168.4.1");
+    // WiFi — fast reconnect after deep sleep, full WiFiManager on first boot
+    bool wifi_done = false;
+
+    if (rtc_wifi_valid) {
+        // Fast path: use cached BSSID/channel to skip AP scan (~2 s vs ~8 s)
+        ui.set_status("Reconnecting...");
         flush_ui(50);
-        while (WiFi.status() != WL_CONNECTED) { wm.process(); lv_timer_handler(); delay(5); }
+        WiFi.mode(WIFI_STA);
+        // WiFi.begin() with no args reads credentials from NVS (stored by WiFiManager)
+        WiFi.begin("", "", rtc_channel, rtc_bssid, true);
+        uint32_t t0 = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - t0 < 5000) {
+            lv_timer_handler(); delay(10);
+        }
+        wifi_done = (WiFi.status() == WL_CONNECTED);
+        if (!wifi_done) {
+            rtc_wifi_valid = false;   // stale cache — fall through to WiFiManager
+            Serial.println("Fast reconnect failed, trying WiFiManager");
+        }
     }
+
+    if (!wifi_done) {
+        ui.set_status("Connecting to WiFi...");
+        flush_ui(50);
+        WiFiManager wm;
+        wm.setTitle(APP_NAME);
+        wm.setDarkMode(true);
+        wm.setCustomHeadElement(
+            "<style>"
+            "body,div,form,section{background:#1c1c1e!important;color:#fff!important}"
+            ".wrap,.main{background:#2c2c2e!important;border:1px solid #38383a!important;box-shadow:none!important}"
+            "h1,h2,h3,p,label,li{color:#fff!important}"
+            "input{background:#3a3a3c!important;border:1px solid #48484a!important;color:#fff!important;border-radius:10px!important}"
+            "button,input[type=submit]{background:#ff9500!important;color:#fff!important;border:none!important;border-radius:12px!important}"
+            "a,a:visited{color:#ff9500!important}"
+            "</style>"
+        );
+        wm.setConfigPortalBlocking(false);
+        if (!wm.autoConnect(SETUP_AP_NAME)) {
+            ui.set_status("WiFi setup:\nJoin " SETUP_AP_NAME "\nOpen Safari:\nhttp://192.168.4.1");
+            flush_ui(50);
+            while (WiFi.status() != WL_CONNECTED) { wm.process(); lv_timer_handler(); delay(5); }
+        }
+    }
+
+    // Modem sleep: WiFi radio sleeps between DTIM beacons when not transmitting.
+    // Saves ~20–40 mA average with negligible latency impact on a home network.
+    WiFi.setSleep(true);
     Serial.printf("WiFi: %s\n", WiFi.localIP().toString().c_str());
 
     start_app_server();
@@ -608,7 +650,9 @@ void loop() {
         g_last_activity = millis();
         ui.go_home();
     }
-    if (digitalRead(PIN_BTN1) == LOW || digitalRead(PIN_BTN2) == LOW)
+    // Any touch or button press resets the inactivity timer.
+    if (digitalRead(PIN_BTN1) == LOW || digitalRead(PIN_BTN2) == LOW ||
+        digitalRead(PIN_TOUCH_INT) == LOW)
         g_last_activity = millis();
 
     if (g_update_pending) { g_update_pending=false; ui.on_entity_update(g_pending_entity); }

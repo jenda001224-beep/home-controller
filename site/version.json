@@ -1,8 +1,9 @@
 {
-  "version": "v5.39",
+  "version": "v5.40",
   "changes": [
-    "Colorwheel nahrazen duhovým hue sliderem — bílý pruh jako knob, stejný styl jako brightness",
-    "On/Off tlačítka fungují v demo módu",
-    "Detail panel se nezavírá tapem mimo ovládací prvky"
+    "Deep sleep místo light sleep — odběr ~1 mA vs ~3 mA, výdrž baterie 2+ týdny",
+    "Rychlý WiFi reconnect po probuzení — BSSID/channel z RTC paměti, ~2 s místo ~8 s",
+    "WiFi modem sleep — úspora 20–40 mA při idle",
+    "Touch resetuje sleep timer — zařízení nespadne do spánku při aktivním používání"
   ]
 }
