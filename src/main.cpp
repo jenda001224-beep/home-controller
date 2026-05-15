@@ -441,6 +441,8 @@ static void handle_status() {
                "\"ssid\":\""+WiFi.SSID()+"\","
                "\"dirigera\":\""+load_dirigera_ip()+"\","
                "\"devices\":"+String(dc.entities().size())+","
+               "\"raw_devices\":"+String(dc.dbg_raw_count())+","
+               "\"raw_types\":\""+dc.dbg_types()+"\","
                "\"uptime\":"+String(millis()/1000)+"}";
     app_srv.send(200,"application/json",b);
 }

@@ -166,6 +166,22 @@ void DirigeraClient::_fetch_devices() {
     std::vector<HAEntity> new_entities;
     std::vector<String>   seen_rooms;
 
+    // Debug: collect raw device count + all types seen (before filter)
+    int    dbg_raw = 0;
+    String dbg_types;
+    for (JsonObject dev : doc.as<JsonArray>()) {
+        String dtype = dev["type"].as<String>();
+        dbg_raw++;
+        if (dbg_types.length() < 200) {
+            if (dbg_types.length()) dbg_types += ",";
+            dbg_types += dtype;
+        }
+    }
+    Serial.printf("[DIRIGERA] %d devices total, types: %s\n", dbg_raw, dbg_types.c_str());
+    // Store for web /status endpoint (no mutex needed — only written here, read on main thread)
+    _dbg_raw_count = dbg_raw;
+    _dbg_types     = dbg_types;
+
     for (JsonObject dev : doc.as<JsonArray>()) {
         String dtype = dev["type"].as<String>();
         if (dtype != "LIGHT" && dtype != "OUTLET") continue;

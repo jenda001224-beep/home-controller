@@ -39,6 +39,10 @@ public:
     void on_update(EntityUpdateCb cb) { _on_update = cb; }
     void on_ready(ReadyCb cb)         { _on_ready  = cb; }
 
+    // Debug accessors (main-thread only)
+    int    dbg_raw_count() const { return _dbg_raw_count; }
+    String dbg_types()     const { return _dbg_types;     }
+
     // Returns true on success; sets out_token
     static bool pair(const String& hub_ip, String& out_token);
 
@@ -64,6 +68,10 @@ private:
     // written by fetch task (core 0), read+cleared by loop() (core 1).
     volatile bool _ready_pending  = false;
     volatile bool _fetched_once   = false;  // set on first fetch; prevents repeated on_ready
+
+    // Debug: populated after each fetch, readable from main thread via accessors
+    int    _dbg_raw_count = 0;   // total devices in DIRIGERA response (before type filter)
+    String _dbg_types;           // comma-separated list of all device types seen
 
     static const int MAX_UPD = 8;
     char _upd_ids[MAX_UPD][64];   // entity_ids that changed in last fetch

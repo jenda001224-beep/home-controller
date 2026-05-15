@@ -285,8 +285,20 @@ void UI::_build_tabs() {
         _grids.push_back(g);
         if (entities.empty()) {
             // No supported devices (LIGHT / OUTLET) found on the hub.
+            // Show raw device count (from last fetch) to help diagnose filtering issues.
+            int raw = _dc ? _dc->dbg_raw_count() : -1;
+            String msg = "No devices found.";
+            if (raw == 0) {
+                msg += "\n\nDIRIGERA returned\nan empty response.";
+            } else if (raw > 0) {
+                msg += "\n\nDIRIGERA has " + String(raw) + " device(s)\nbut none are lights\nor outlets.";
+                String types = _dc->dbg_types();
+                if (!types.isEmpty()) msg += "\n\nTypes: " + types;
+            } else {
+                msg += "\n\nMake sure your DIRIGERA\nhas lights or outlets.";
+            }
             lv_obj_t* lbl = lv_label_create(g);
-            lv_label_set_text(lbl, "No devices found.\n\nMake sure your DIRIGERA\nhas lights or outlets.");
+            lv_label_set_text(lbl, msg.c_str());
             lv_obj_set_style_text_color(lbl, C_TEXT2, 0);
             lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
