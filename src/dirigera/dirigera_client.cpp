@@ -446,6 +446,25 @@ void DirigeraClient::set_color(const String& id, uint8_t r, uint8_t g, uint8_t b
     _patch(id, body);
 }
 
+void DirigeraClient::set_color_hs(const String& id, float hue, float sat) {
+    // Send hue/saturation directly — no RGB conversion, no rounding errors.
+    // Optimistic update: compute approximate RGB for local state so UI stays in sync.
+    HAEntity snap;
+    bool notify = false;
+    if (_mutex && xSemaphoreTake(_mutex, 0) == pdTRUE) {
+        HAEntity* e = _find_entity_locked(id);
+        if (e) {
+            hs_to_rgb(hue, sat, e->r, e->g, e->b);
+            snap = *e; notify = true;
+        }
+        xSemaphoreGive(_mutex);
+    }
+    if (notify && _on_update) _on_update(snap);
+    String body = "[{\"attributes\":{\"colorHue\":" + String(hue, 2) +
+                  ",\"colorSaturation\":" + String(sat, 3) + "}}]";
+    _patch(id, body);
+}
+
 // ── Demo (main thread only) ───────────────────────────────────────────────────
 
 void DirigeraClient::load_demo() {

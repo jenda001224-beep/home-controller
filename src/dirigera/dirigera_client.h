@@ -35,6 +35,7 @@ public:
     void turn_off(const String& id);
     void set_brightness(const String& id, uint8_t val255);   // 0-255
     void set_color(const String& id, uint8_t r, uint8_t g, uint8_t b);
+    void set_color_hs(const String& id, float hue, float sat);  // hue 0-360, sat 0-1
 
     void on_update(EntityUpdateCb cb) { _on_update = cb; }
     void on_ready(ReadyCb cb)         { _on_ready  = cb; }

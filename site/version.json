@@ -1,9 +1,10 @@
 {
-  "version": "v5.42",
+  "version": "v5.43",
   "changes": [
-    "Oprava: DIRIGERA vraci typy malymi pismeny (light/outlet) — nyni se zarizeni zobrazuji spravne",
-    "Oprava boot loop pri prazdnem DIRIGERA",
-    "Deep sleep + rychly WiFi reconnect (~2 tydny na baterii)",
-    "Hue slider misto colorwheel"
+    "Fonty s diakritikou (hacky, carky) pro cestinu",
+    "Colorwheel: barvy se ted posilaji primo (hue/sat) — spravne barvy",
+    "Rychlejsi probuzeni: trojstupnovy WiFi reconnect (~2s)",
+    "Automaticka aktualizace pri kazdem zapnuti",
+    "Auto-OTA jen pri studeneom startu, ne po probuzeni ze spanku"
   ]
 }

@@ -1,6 +1,7 @@
 #include "ui.h"
 #include "theme.h"
 #include "config.h"
+#include "fonts/fonts.h"
 #include <Arduino.h>
 
 static constexpr int TILE_PAD  = 60;                       // visible margin on each side
@@ -84,7 +85,7 @@ void UI::show_splash() {
     _splash_status = lv_label_create(_scr_splash);
     lv_label_set_text(_splash_status, "Starting...");
     lv_obj_set_style_text_color(_splash_status, C_TEXT2, 0);
-    lv_obj_set_style_text_font(_splash_status, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(_splash_status, &font_cs_14, 0);
     lv_obj_set_style_text_align(_splash_status, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(_splash_status, TFT_WIDTH - 40);
     lv_obj_align(_splash_status, LV_ALIGN_CENTER, 0, 20);
@@ -94,7 +95,7 @@ void UI::show_splash() {
     lv_obj_t* ver = lv_label_create(_scr_splash);
     lv_label_set_text(ver, APP_VERSION);
     lv_obj_set_style_text_color(ver, C_TEXT2, 0);
-    lv_obj_set_style_text_font(ver, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(ver, &font_cs_12, 0);
     lv_obj_align(ver, LV_ALIGN_BOTTOM_MID, 0, -12);
 
     // Spinner — orange on gray
@@ -204,13 +205,13 @@ void UI::_build_tabs() {
 
     lv_obj_t* title = lv_label_create(header);
     lv_label_set_text(title, LV_SYMBOL_HOME "  " APP_NAME);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_22, 0);
+    lv_obj_set_style_text_font(title, &font_cs_22, 0);
     lv_obj_set_style_text_color(title, C_TEXT, 0);
     lv_obj_align(title, LV_ALIGN_LEFT_MID, 16, 0);
 
     _bat_label = lv_label_create(header);
     lv_label_set_text(_bat_label, LV_SYMBOL_BATTERY_FULL " --");
-    lv_obj_set_style_text_font(_bat_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(_bat_label, &font_cs_14, 0);
     lv_obj_set_style_text_color(_bat_label, C_TEXT, 0);
     lv_obj_align(_bat_label, LV_ALIGN_RIGHT_MID, -TILE_PAD, 0);  // align with tile right edge
 
@@ -300,7 +301,7 @@ void UI::_build_tabs() {
             lv_obj_t* lbl = lv_label_create(g);
             lv_label_set_text(lbl, msg.c_str());
             lv_obj_set_style_text_color(lbl, C_TEXT2, 0);
-            lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_font(lbl, &font_cs_14, 0);
             lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
             lv_obj_set_width(lbl, TILE_W);
             lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
@@ -356,7 +357,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
 
         lv_obj_t* icon = lv_label_create(icon_box);
         lv_label_set_text(icon, entity_icon(entity));
-        lv_obj_set_style_text_font(icon, &lv_font_montserrat_22, 0);
+        lv_obj_set_style_text_font(icon, &font_cs_22, 0);
         lv_obj_set_style_text_color(icon, entity.is_on() ? C_ACCENT : C_TEXT2, 0);
         lv_obj_align(icon, LV_ALIGN_CENTER, 0, 0);
 
@@ -375,20 +376,20 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
         lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_CLIP);
         lv_obj_set_width(name_lbl, TILE_W - 52 - 40);  // tile - icon_box - chevron
         lv_obj_set_style_text_color(name_lbl, C_TEXT, 0);
-        lv_obj_set_style_text_font(name_lbl, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(name_lbl, &font_cs_14, 0);
         lv_obj_align(name_lbl, LV_ALIGN_LEFT_MID, 0, -8);
 
         lv_obj_t* state_lbl = lv_label_create(text_box);
         lv_label_set_text(state_lbl, entity.is_on() ? "On" : "Off");
         lv_obj_set_style_text_color(state_lbl, entity.is_on() ? C_ACCENT : C_TEXT2, 0);
-        lv_obj_set_style_text_font(state_lbl, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_font(state_lbl, &font_cs_12, 0);
         lv_obj_align(state_lbl, LV_ALIGN_LEFT_MID, 0, 10);
 
         // Chevron
         lv_obj_t* chev = lv_label_create(tile);
         lv_label_set_text(chev, LV_SYMBOL_RIGHT);
         lv_obj_set_style_text_color(chev, C_BG3, 0);
-        lv_obj_set_style_text_font(chev, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(chev, &font_cs_14, 0);
         lv_obj_set_style_pad_right(chev, 12, 0);
 
         lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
@@ -435,13 +436,13 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
     lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(name_lbl, lv_pct(100));
     lv_obj_set_style_text_color(name_lbl, C_TEXT, 0);
-    lv_obj_set_style_text_font(name_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(name_lbl, &font_cs_12, 0);
     lv_obj_align(name_lbl, LV_ALIGN_BOTTOM_LEFT, 0, -14);
 
     lv_obj_t* state_lbl = lv_label_create(tile);
     lv_label_set_text(state_lbl, entity.is_on() ? "On" : "Off");
     lv_obj_set_style_text_color(state_lbl, C_TEXT2, 0);
-    lv_obj_set_style_text_font(state_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(state_lbl, &font_cs_12, 0);
     lv_obj_align(state_lbl, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
     lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
@@ -524,7 +525,7 @@ void UI::_show_detail(const String& entity_id) {
     // Device name
     _detail_title = lv_label_create(_detail_panel);
     lv_label_set_text(_detail_title, e.friendly_name.c_str());
-    lv_obj_set_style_text_font(_detail_title, &lv_font_montserrat_22, 0);
+    lv_obj_set_style_text_font(_detail_title, &font_cs_22, 0);
     lv_obj_set_style_text_color(_detail_title, C_TEXT, 0);
     lv_obj_align(_detail_title, LV_ALIGN_TOP_MID, 0, 26);
 
@@ -555,7 +556,7 @@ void UI::_show_detail(const String& entity_id) {
             lv_obj_t* col_lbl = lv_label_create(col_btn);
             lv_label_set_text(col_lbl, LV_SYMBOL_EDIT "  Colour");
             lv_obj_set_style_text_color(col_lbl, C_TEXT, 0);
-            lv_obj_set_style_text_font(col_lbl, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_font(col_lbl, &font_cs_14, 0);
             lv_obj_align(col_lbl, LV_ALIGN_CENTER, 0, 0);
             pill_top = 52;   // push pill below the button
         }
@@ -627,7 +628,7 @@ void UI::_show_detail(const String& entity_id) {
         lv_obj_t* back_lbl = lv_label_create(back_btn);
         lv_label_set_text(back_lbl, LV_SYMBOL_LEFT "  Brightness");
         lv_obj_set_style_text_color(back_lbl, C_TEXT, 0);
-        lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(back_lbl, &font_cs_14, 0);
         lv_obj_align(back_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
         // Hue pill — same visual style as brightness pill but with rainbow gradient.
@@ -805,20 +806,14 @@ void UI::_color_changed(lv_event_t* ev) {
     if (self->_detail_updating) return;  // programmatic update — don't echo back
     if (!self->_detail_colorwheel || !self->_dc || self->_detail_entity_id.isEmpty()) return;
 
-    // _detail_colorwheel is now a hue slider (0–359).
-    // Convert hue → RGB at full saturation/brightness; the brightness slider handles dimming.
-    int hue = lv_slider_get_value(self->_detail_colorwheel);
-    lv_color_t lvc = lv_color_hsv_to_rgb((uint16_t)hue, 100, 100);
-    lv_color32_t c32;
-    c32.full = lv_color_to32(lvc);
+    // Send hue directly — avoids RGB→HS rounding errors and LVGL color-format ambiguity.
+    float hue = (float)lv_slider_get_value(self->_detail_colorwheel);  // 0–359
 
     bool released = (lv_event_get_code(ev) == LV_EVENT_RELEASED);
     uint32_t now  = millis();
-    // Send on finger release OR at most every 500 ms while dragging
     if (released || now - self->_col_last_send_ms >= 500) {
         self->_col_last_send_ms = now;
-        self->_dc->set_color(self->_detail_entity_id,
-                             c32.ch.red, c32.ch.green, c32.ch.blue);
+        self->_dc->set_color_hs(self->_detail_entity_id, hue, 1.0f);
     }
 }
 

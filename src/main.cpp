@@ -561,6 +561,44 @@ static void start_app_server() {
     Serial.println("App server on :80");
 }
 
+// -- Auto-OTA on cold boot --
+// Fetches version.json; if a newer version exists, calls do_ota_update() which
+// flashes the firmware and reboots. Only runs on full power-on (not deep-sleep wake).
+
+static void check_ota_on_boot() {
+    ui.set_status("Checking updates...");
+    flush_ui(50);
+
+    WiFiClientSecure vc;
+    vc.setInsecure();
+    HTTPClient http;
+    http.begin(vc, "https://jenda001224-beep.github.io/home-controller/version.json");
+    http.setTimeout(8000);
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.addHeader("Cache-Control", "no-cache");
+    http.addHeader("User-Agent", "ESP32-SwitchPro/1.0");
+
+    int code = http.GET();
+    if (code == 200) {
+        String body = http.getString();
+        http.end();
+        DynamicJsonDocument doc(1024);
+        if (deserializeJson(doc, body) == DeserializationError::Ok) {
+            String latest = doc["version"] | String("");
+            if (!latest.isEmpty() && latest != APP_VERSION) {
+                Serial.printf("[OTA] boot: updating %s -> %s\n", APP_VERSION, latest.c_str());
+                do_ota_update();  // reboots on success; returns only on failure
+                return;
+            }
+            Serial.printf("[OTA] boot: up to date (%s)\n", APP_VERSION);
+            return;
+        }
+    }
+    http.end();
+    Serial.printf("[OTA] boot check failed: HTTP %d\n", code);
+    // Non-fatal — continue normal boot
+}
+
 // -- setup / loop --
 
 void setup() {
@@ -596,24 +634,45 @@ void setup() {
         }
     }
 
-    // WiFi — fast reconnect after deep sleep, full WiFiManager on first boot
+    // Detect wake cause once — used for WiFi strategy and auto-OTA decision.
+    esp_sleep_wakeup_cause_t wake_cause = esp_sleep_get_wakeup_cause();
+    bool is_cold_boot = (wake_cause == ESP_SLEEP_WAKEUP_UNDEFINED);
+
+    // WiFi — three-tier reconnect strategy:
+    //   1. Fast path  (BSSID+channel hint) — ~1.5 s typical on sleep wake
+    //   2. Medium path (stored NVS creds, full scan) — catches AP channel change
+    //   3. Full WiFiManager — first boot or creds wiped
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);   // full radio power while connecting — enabled after link up
     bool wifi_done = false;
 
     if (rtc_wifi_valid) {
-        // Fast path: use cached BSSID/channel to skip AP scan (~2 s vs ~8 s)
+        // Fast path: BSSID/channel hint, stored SSID/pass read from NVS by SDK
         ui.set_status("Reconnecting...");
         flush_ui(50);
-        WiFi.mode(WIFI_STA);
-        // WiFi.begin() with no args reads credentials from NVS (stored by WiFiManager)
         WiFi.begin("", "", rtc_channel, rtc_bssid, true);
+        uint32_t t0 = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - t0 < 3000) {
+            lv_timer_handler(); delay(10);
+        }
+        wifi_done = (WiFi.status() == WL_CONNECTED);
+        if (!wifi_done) {
+            WiFi.disconnect(true); delay(100);
+            Serial.println("[WiFi] BSSID hint failed, trying plain reconnect");
+        }
+    }
+
+    if (!wifi_done && rtc_wifi_valid) {
+        // Medium path: stored NVS credentials, full channel scan (AP may have moved)
+        WiFi.begin();
         uint32_t t0 = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - t0 < 5000) {
             lv_timer_handler(); delay(10);
         }
         wifi_done = (WiFi.status() == WL_CONNECTED);
         if (!wifi_done) {
-            rtc_wifi_valid = false;   // stale cache — fall through to WiFiManager
-            Serial.println("Fast reconnect failed, trying WiFiManager");
+            rtc_wifi_valid = false;
+            Serial.println("[WiFi] plain reconnect failed, falling back to WiFiManager");
         }
     }
 
@@ -644,9 +703,17 @@ void setup() {
     // Modem sleep: WiFi radio sleeps between DTIM beacons when not transmitting.
     // Saves ~20–40 mA average with negligible latency impact on a home network.
     WiFi.setSleep(true);
-    Serial.printf("WiFi: %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("[WiFi] %s (wake=%d)\n", WiFi.localIP().toString().c_str(), (int)wake_cause);
 
     start_app_server();
+
+    // Auto-OTA: on full power-on (not sleep wake), fetch version.json and update if newer.
+    // On sleep wake we skip this to keep wake latency low.
+    if (is_cold_boot) {
+        check_ota_on_boot();
+        // If update was available, do_ota_update() rebooted the device.
+        // If we reach here: either up to date, or check failed — continue normally.
+    }
 
     String dip  = load_dirigera_ip();
     String dtok = load_dirigera_token();
