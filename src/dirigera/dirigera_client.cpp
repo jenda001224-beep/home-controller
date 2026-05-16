@@ -184,7 +184,8 @@ void DirigeraClient::_fetch_devices() {
 
     for (JsonObject dev : doc.as<JsonArray>()) {
         String dtype = dev["type"].as<String>();
-        if (dtype != "LIGHT" && dtype != "OUTLET") continue;
+        dtype.toLowerCase();   // API returns lowercase ("light", "outlet")
+        if (dtype != "light" && dtype != "outlet") continue;
 
         String room_id   = dev["room"]["id"].as<String>();
         String room_name = dev["room"]["name"].as<String>();
@@ -207,7 +208,7 @@ void DirigeraClient::_fetch_devices() {
         e.area_id = room_id;
         e.state   = attr["isOn"].as<bool>() ? "on" : "off";
 
-        if (dtype == "LIGHT") {
+        if (dtype == "light") {
             e.type = EntityType::LIGHT;
             e.supports_brightness = attr.containsKey("lightLevel");
             e.supports_color      = attr.containsKey("colorHue");

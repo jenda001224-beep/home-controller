@@ -1,10 +1,9 @@
 {
-  "version": "v5.41",
+  "version": "v5.42",
   "changes": [
-    "Deep sleep místo light sleep — odběr ~1 mA vs ~3 mA, výdrž baterie 2+ týdny",
-    "Rychlý WiFi reconnect po probuzení — BSSID/channel z RTC paměti, ~2 s místo ~8 s",
-    "WiFi modem sleep — úspora 20–40 mA při idle",
-    "Touch resetuje sleep timer — zařízení nespadne do spánku při aktivním používání",
-    "Oprava boot loop — on_ready se správně spustí jen jednou, i když DIRIGERA nemá žádná světla/zásuvky"
+    "Oprava: DIRIGERA vraci typy malymi pismeny (light/outlet) — nyni se zarizeni zobrazuji spravne",
+    "Oprava boot loop pri prazdnem DIRIGERA",
+    "Deep sleep + rychly WiFi reconnect (~2 tydny na baterii)",
+    "Hue slider misto colorwheel"
   ]
 }
