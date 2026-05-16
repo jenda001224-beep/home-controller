@@ -46,6 +46,15 @@ static uint8_t  cfg_brightness = 200;
 static uint16_t cfg_sleep_sec  = SLEEP_SEC_DEFAULT;
 static uint8_t  cfg_grid_cols  = 1;
 
+// -- Hidden devices (NVS "hc_hide" / "ids") --
+
+static String load_hidden_ids() {
+    prefs.begin("hc_hide", true); String v = prefs.getString("ids",""); prefs.end(); return v;
+}
+static void save_hidden_ids(const String& ids) {
+    prefs.begin("hc_hide", false); prefs.putString("ids", ids); prefs.end();
+}
+
 static void load_settings() {
     prefs.begin("hc_cfg", true);
     cfg_brightness = prefs.getUChar("bri",    200);
@@ -232,6 +241,21 @@ static const char CSS[] PROGMEM =
     "</style>";
 
 // Settings card — built at runtime so current values appear pre-filled
+// Device visibility card — rendered into page_live() only (requires paired DIRIGERA)
+static String devices_card_html() {
+    String h = "<div class='card'><h2>Devices</h2>";
+    h += "<p style='font-size:13px;color:#8e8e93;margin-bottom:14px'>";
+    h += "Uncheck devices to hide them from the home screen.</p>";
+    h += "<div id='devlist' style='margin-bottom:12px'>"
+         "<span style='color:#636366;font-size:13px'>Loading...</span></div>";
+    h += "<div class='row'>";
+    h += "<button class='btn' id='devbtn' disabled>Apply</button>";
+    h += "<button class='btn gray' id='showall'>Show All</button>";
+    h += "</div>";
+    h += "<div class='status' id='devs'></div></div>";
+    return h;
+}
+
 static String settings_card_html() {
     // Use explicit String concatenation to avoid raw-string )" termination issues
     String h = "<div class='card'><h2>Settings</h2>";
@@ -382,6 +406,8 @@ static String page_live() {
     // Status card
     h += "<div class='card'><h2>Status</h2><div class='info' id='info'>Loading...</div></div>";
 
+    h += devices_card_html();
+
     h += settings_card_html();
 
     h += "<script>"
@@ -411,6 +437,52 @@ static String page_live() {
          "  }).catch(function(){document.getElementById('info').textContent='Failed';});"
          "}"
          "loadInfo();"
+         // -- Devices section --
+         "var devData=[];"
+         "function loadDevices(){"
+         "  fetch('/api/devices').then(function(r){return r.json();})"
+         "  .then(function(list){"
+         "    devData=list;"
+         "    var html='';"
+         "    var byArea={};"
+         "    list.forEach(function(d){"
+         "      var a=d.area||'';if(!byArea[a])byArea[a]=[];"
+         "      byArea[a].push(d);"
+         "    });"
+         "    Object.keys(byArea).sort().forEach(function(area){"
+         "      if(area)html+='<div style=\"font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:#636366;margin:10px 0 6px\">'+area+'</div>';"
+         "      byArea[area].forEach(function(d){"
+         "        var icon=d.type==='light'?'&#128261;':'&#128268;';"
+         "        html+='<label style=\"display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer\">';"
+         "        html+='<input type=\"checkbox\" data-id=\"'+d.id+'\"'+(d.hidden?'':' checked')+' style=\"width:18px;height:18px;accent-color:#ff9500\">';"
+         "        html+='<span>'+icon+' '+d.name+'</span></label>';"
+         "      });"
+         "    });"
+         "    if(!html)html='<span style=\"color:#636366;font-size:13px\">No devices found</span>';"
+         "    document.getElementById('devlist').innerHTML=html;"
+         "    document.getElementById('devbtn').disabled=false;"
+         "    document.querySelectorAll('#devlist input[type=checkbox]').forEach(function(cb){"
+         "      cb.addEventListener('change',function(){document.getElementById('devbtn').disabled=false;});"
+         "    });"
+         "  }).catch(function(){document.getElementById('devlist').innerHTML='<span style=\"color:#ff453a\">Load failed</span>';});"
+         "}"
+         "document.getElementById('devbtn').addEventListener('click',function(){"
+         "  var hidden=[];"
+         "  document.querySelectorAll('#devlist input[type=checkbox]').forEach(function(cb){"
+         "    if(!cb.checked)hidden.push(cb.dataset.id);"
+         "  });"
+         "  var s=document.getElementById('devs');"
+         "  s.textContent='Saving...';s.className='status';"
+         "  fetch('/api/set_hidden?ids='+hidden.join(','))"
+         "  .then(function(r){return r.json();})"
+         "  .then(function(d){s.textContent=d.ok?'\\u2713 Saved':'Error';s.className='status '+(d.ok?'ok':'err');})"
+         "  .catch(function(){s.textContent='Error';s.className='status err';});"
+         "});"
+         "document.getElementById('showall').addEventListener('click',function(){"
+         "  document.querySelectorAll('#devlist input[type=checkbox]').forEach(function(cb){cb.checked=true;});"
+         "  document.getElementById('devbtn').disabled=false;"
+         "});"
+         "loadDevices();"
          "</script>";
     h += String(FPSTR(SETTINGS_JS));
     h += "</body></html>";
@@ -544,6 +616,41 @@ static void handle_proxy_dirigera() {
     app_srv.send(200, "application/json", out);
 }
 
+// -- Device visibility API --
+
+// GET /api/devices — list all entities with their current hidden state
+static void handle_api_devices() {
+    // Build area_id → area_name lookup
+    auto area_name = [&](const String& aid) -> String {
+        for (const auto& a : dc.areas()) if (a.id == aid) return a.name;
+        return "";
+    };
+    String out = "[";
+    bool first = true;
+    for (const auto& e : dc.entities()) {
+        if (!first) out += ",";
+        first = false;
+        String type_str = (e.type == EntityType::LIGHT) ? "light" : "outlet";
+        bool hid = ui.is_hidden(e.entity_id);
+        out += "{\"id\":\"" + e.entity_id +
+               "\",\"name\":\"" + e.friendly_name +
+               "\",\"area\":\"" + area_name(e.area_id) +
+               "\",\"type\":\"" + type_str +
+               "\",\"hidden\":" + (hid ? "true" : "false") + "}";
+    }
+    out += "]";
+    app_srv.send(200, "application/json", out);
+}
+
+// GET /api/set_hidden?ids=id1,id2  — replace the entire hidden list
+static void handle_api_set_hidden() {
+    String ids = app_srv.arg("ids");   // empty string = show all
+    save_hidden_ids(ids);
+    ui.set_hidden_ids(ids);
+    ui.build_home();
+    app_srv.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void start_app_server() {
     app_srv.on("/",             HTTP_GET, handle_root);
     app_srv.on("/pair_start",   HTTP_GET, handle_pair_start);
@@ -556,6 +663,8 @@ static void start_app_server() {
     app_srv.on("/settings",     HTTP_GET, handle_settings_get);
     app_srv.on("/ota_check",        HTTP_GET, handle_ota_check);
     app_srv.on("/ota_update",       HTTP_GET, handle_ota_update);
+    app_srv.on("/api/devices",      HTTP_GET, handle_api_devices);
+    app_srv.on("/api/set_hidden",   HTTP_GET, handle_api_set_hidden);
     app_srv.on("/proxy_dirigera",   HTTP_GET, handle_proxy_dirigera);
     app_srv.begin();
     Serial.println("App server on :80");
@@ -714,6 +823,9 @@ void setup() {
         // If update was available, do_ota_update() rebooted the device.
         // If we reach here: either up to date, or check failed — continue normally.
     }
+
+    // Apply persisted device visibility filter before building the home screen.
+    ui.set_hidden_ids(load_hidden_ids());
 
     String dip  = load_dirigera_ip();
     String dtok = load_dirigera_token();

@@ -17,9 +17,14 @@ public:
     void set_grid_cols(uint8_t cols);
     uint8_t grid_cols() const { return _grid_cols; }
 
+    // Device visibility filter — comma-separated entity IDs to hide
+    void set_hidden_ids(const String& ids);
+    bool is_hidden(const String& id) const;
+
 private:
     DirigeraClient* _dc        = nullptr;
     uint8_t         _grid_cols = 1;   // 1=list, 2=grid, 3=compact grid
+    std::vector<String> _hidden_ids;  // entity IDs to skip when building tiles
 
     lv_obj_t* _scr_splash    = nullptr;
     lv_obj_t* _scr_home      = nullptr;

@@ -1,10 +1,9 @@
 {
-  "version": "v5.43",
+  "version": "v5.44",
   "changes": [
-    "Fonty s diakritikou (hacky, carky) pro cestinu",
-    "Colorwheel: barvy se ted posilaji primo (hue/sat) — spravne barvy",
-    "Rychlejsi probuzeni: trojstupnovy WiFi reconnect (~2s)",
-    "Automaticka aktualizace pri kazdem zapnuti",
-    "Auto-OTA jen pri studeneom startu, ne po probuzeni ze spanku"
+    "Oprava color slideru: hue uz odpovida pozici na paletce",
+    "Fonty: symboly a diakritika fungují (fallback na vestavenou Montserrat pro symboly)",
+    "Nastavení zařízení: na http://<IP> lze skrýt libovolná světla/zásuvky",
+    "Rychlejší probuzení a auto-OTA z v5.43"
   ]
 }
