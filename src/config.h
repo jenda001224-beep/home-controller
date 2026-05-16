@@ -32,8 +32,11 @@
 #define PIN_BAT_ADC     4   // 1:2 voltage divider
 
 // -- App constants --
+// FontAwesome 5 Solid U+F0EB — lightbulb glyph included in our custom fonts
+#define SYMBOL_BULB    "\xEF\x83\xAB"
+
 #define APP_NAME       "SwitchPro"
-#define APP_VERSION    "v5.44"
+#define APP_VERSION    "v5.45"
 #define SETUP_AP_NAME  "SwitchPro-Setup"
 
 // -- Deep sleep default (seconds, 0 = never) --

@@ -9,6 +9,8 @@
 #include <HTTPUpdate.h>
 #include <Wire.h>
 #include <XPowersLib.h>
+#include <map>
+#include <algorithm>
 #include "config.h"
 #include "display/display.h"
 #include "dirigera/dirigera_client.h"
@@ -53,6 +55,58 @@ static String load_hidden_ids() {
 }
 static void save_hidden_ids(const String& ids) {
     prefs.begin("hc_hide", false); prefs.putString("ids", ids); prefs.end();
+}
+
+// -- Device meta: custom names + display order (NVS "hc_meta") --
+
+// order: comma-separated entity IDs; names: JSON object {"id":"name",...}
+static String load_device_order() {
+    prefs.begin("hc_meta", true); String v = prefs.getString("order",""); prefs.end(); return v;
+}
+static String load_device_names() {
+    prefs.begin("hc_meta", true); String v = prefs.getString("names",""); prefs.end(); return v;
+}
+static void save_device_meta(const String& order, const String& names) {
+    prefs.begin("hc_meta", false);
+    prefs.putString("order", order);
+    prefs.putString("names", names);
+    prefs.end();
+}
+
+// Runtime copies — kept in sync with NVS and applied to ui after each change.
+static std::vector<String>       g_entity_order;
+static std::map<String,String>   g_custom_names;
+
+// Parse NVS strings → runtime containers and push to UI.
+static void apply_device_meta() {
+    // Parse order CSV
+    g_entity_order.clear();
+    String order_csv = load_device_order();
+    if (!order_csv.isEmpty()) {
+        int start = 0;
+        while (start < (int)order_csv.length()) {
+            int comma = order_csv.indexOf(',', start);
+            if (comma < 0) comma = order_csv.length();
+            String tok = order_csv.substring(start, comma);
+            tok.trim();
+            if (!tok.isEmpty()) g_entity_order.push_back(tok);
+            start = comma + 1;
+        }
+    }
+    // Parse names JSON
+    g_custom_names.clear();
+    String names_json = load_device_names();
+    if (!names_json.isEmpty()) {
+        DynamicJsonDocument doc(4096);
+        if (deserializeJson(doc, names_json) == DeserializationError::Ok) {
+            for (JsonPair p : doc.as<JsonObject>()) {
+                String name = p.value().as<String>();
+                if (!name.isEmpty()) g_custom_names[p.key().c_str()] = name;
+            }
+        }
+    }
+    ui.set_entity_order(g_entity_order);
+    ui.set_custom_names(g_custom_names);
 }
 
 static void load_settings() {
@@ -244,8 +298,9 @@ static const char CSS[] PROGMEM =
 // Device visibility card — rendered into page_live() only (requires paired DIRIGERA)
 static String devices_card_html() {
     String h = "<div class='card'><h2>Devices</h2>";
-    h += "<p style='font-size:13px;color:#8e8e93;margin-bottom:14px'>";
-    h += "Uncheck devices to hide them from the home screen.</p>";
+    h += "<p style='font-size:13px;color:#8e8e93;margin-bottom:14px'>"
+         "Reorder with \xe2\x96\xb2\xe2\x96\xbc, rename by typing, uncheck to hide. "
+         "Changes are local to SwitchPro only.</p>";
     h += "<div id='devlist' style='margin-bottom:12px'>"
          "<span style='color:#636366;font-size:13px'>Loading...</span></div>";
     h += "<div class='row'>";
@@ -439,41 +494,66 @@ static String page_live() {
          "loadInfo();"
          // -- Devices section --
          "var devData=[];"
+         "var BS='background:#3a3a3c;border:none;color:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:13px';"
+         "function mkBtn(t,fn){var b=document.createElement('button');b.textContent=t;b.style.cssText=BS;b.addEventListener('click',fn);return b;}"
+         "function renderDevices(){"
+         "  var list=document.getElementById('devlist');"
+         "  list.innerHTML='';"
+         "  if(!devData.length){list.innerHTML='<span style=\"color:#636366;font-size:13px\">No devices found</span>';return;}"
+         "  devData.forEach(function(d,i){"
+         "    var row=document.createElement('div');"
+         "    row.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #38383a';"
+         "    row.dataset.id=d.id;"
+         "    var col=document.createElement('div');"
+         "    col.style.cssText='display:flex;flex-direction:column;gap:2px';"
+         "    var u=mkBtn('\\u25b2',function(){moveItem(devData.indexOf(d),-1);});"
+         "    var dn=mkBtn('\\u25bc',function(){moveItem(devData.indexOf(d),1);});"
+         "    if(i===0)u.style.opacity='0.25';"
+         "    if(i===devData.length-1)dn.style.opacity='0.25';"
+         "    col.appendChild(u);col.appendChild(dn);row.appendChild(col);"
+         "    var cb=document.createElement('input');"
+         "    cb.type='checkbox';cb.checked=!d.hidden;"
+         "    cb.style.cssText='width:18px;height:18px;accent-color:#ff9500;flex-shrink:0';"
+         "    row.appendChild(cb);"
+         "    var ico=document.createElement('span');"
+         "    ico.textContent=d.type==='light'?'\\ud83d\\udca1':'\\ud83d\\udd0c';"
+         "    row.appendChild(ico);"
+         "    var info=document.createElement('div');"
+         "    info.style.cssText='flex:1;min-width:0';"
+         "    if(d.area){var ar=document.createElement('div');ar.textContent=d.area;ar.style.cssText='font-size:11px;color:#636366;margin-bottom:2px';info.appendChild(ar);}"
+         "    var inp=document.createElement('input');"
+         "    inp.type='text';inp.placeholder=d.name;inp.value=d.custom_name||'';"
+         "    inp.style.cssText='width:100%;background:#1c1c1e;border:1px solid #38383a;color:#fff;border-radius:6px;padding:4px 8px;font-size:14px;margin:0';"
+         "    info.appendChild(inp);"
+         "    row.appendChild(info);"
+         "    list.appendChild(row);"
+         "  });"
+         "  document.getElementById('devbtn').disabled=false;"
+         "}"
+         "function moveItem(i,dir){"
+         "  var j=i+dir;"
+         "  if(j<0||j>=devData.length)return;"
+         "  var t=devData[i];devData[i]=devData[j];devData[j]=t;"
+         "  renderDevices();"
+         "}"
          "function loadDevices(){"
          "  fetch('/api/devices').then(function(r){return r.json();})"
-         "  .then(function(list){"
-         "    devData=list;"
-         "    var html='';"
-         "    var byArea={};"
-         "    list.forEach(function(d){"
-         "      var a=d.area||'';if(!byArea[a])byArea[a]=[];"
-         "      byArea[a].push(d);"
-         "    });"
-         "    Object.keys(byArea).sort().forEach(function(area){"
-         "      if(area)html+='<div style=\"font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:#636366;margin:10px 0 6px\">'+area+'</div>';"
-         "      byArea[area].forEach(function(d){"
-         "        var icon=d.type==='light'?'&#128261;':'&#128268;';"
-         "        html+='<label style=\"display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer\">';"
-         "        html+='<input type=\"checkbox\" data-id=\"'+d.id+'\"'+(d.hidden?'':' checked')+' style=\"width:18px;height:18px;accent-color:#ff9500\">';"
-         "        html+='<span>'+icon+' '+d.name+'</span></label>';"
-         "      });"
-         "    });"
-         "    if(!html)html='<span style=\"color:#636366;font-size:13px\">No devices found</span>';"
-         "    document.getElementById('devlist').innerHTML=html;"
-         "    document.getElementById('devbtn').disabled=false;"
-         "    document.querySelectorAll('#devlist input[type=checkbox]').forEach(function(cb){"
-         "      cb.addEventListener('change',function(){document.getElementById('devbtn').disabled=false;});"
-         "    });"
-         "  }).catch(function(){document.getElementById('devlist').innerHTML='<span style=\"color:#ff453a\">Load failed</span>';});"
+         "  .then(function(list){devData=list;renderDevices();})"
+         "  .catch(function(){document.getElementById('devlist').innerHTML='<span style=\"color:#ff453a\">Load failed</span>';});"
          "}"
          "document.getElementById('devbtn').addEventListener('click',function(){"
-         "  var hidden=[];"
-         "  document.querySelectorAll('#devlist input[type=checkbox]').forEach(function(cb){"
-         "    if(!cb.checked)hidden.push(cb.dataset.id);"
+         "  var rows=document.getElementById('devlist').children;"
+         "  var order=[],names={},hidden=[];"
+         "  Array.from(rows).forEach(function(row){"
+         "    var id=row.dataset.id;if(!id)return;"
+         "    order.push(id);"
+         "    var cb=row.querySelector('input[type=checkbox]');if(cb&&!cb.checked)hidden.push(id);"
+         "    var inp=row.querySelector('input[type=text]');if(inp&&inp.value.trim())names[id]=inp.value.trim();"
          "  });"
          "  var s=document.getElementById('devs');"
          "  s.textContent='Saving...';s.className='status';"
-         "  fetch('/api/set_hidden?ids='+hidden.join(','))"
+         "  fetch('/api/save_devices',{method:'POST',headers:{'Content-Type':'application/json'},"
+         "    body:JSON.stringify({order:order,names:names,hidden:hidden})})"
          "  .then(function(r){return r.json();})"
          "  .then(function(d){s.textContent=d.ok?'\\u2713 Saved':'Error';s.className='status '+(d.ok?'ok':'err');})"
          "  .catch(function(){s.textContent='Error';s.className='status err';});"
@@ -618,25 +698,63 @@ static void handle_proxy_dirigera() {
 
 // -- Device visibility API --
 
-// GET /api/devices — list all entities with their current hidden state
+// Escape a string for embedding in a JSON string value.
+static String json_esc(const String& s) {
+    String out;
+    out.reserve(s.length() + 4);
+    for (char c : s) {
+        if      (c == '"')  out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') {}  // skip CR
+        else                out += c;
+    }
+    return out;
+}
+
+// GET /api/devices — list all entities sorted by user-defined order,
+// including custom_name so the web UI can pre-fill rename inputs.
 static void handle_api_devices() {
     // Build area_id → area_name lookup
     auto area_name = [&](const String& aid) -> String {
         for (const auto& a : dc.areas()) if (a.id == aid) return a.name;
         return "";
     };
+
+    // Collect and sort like _build_tabs does
+    const auto& entities = dc.entities();
+    std::vector<const HAEntity*> sorted;
+    for (const auto& e : entities) sorted.push_back(&e);
+    if (!g_entity_order.empty()) {
+        std::stable_sort(sorted.begin(), sorted.end(),
+            [](const HAEntity* a, const HAEntity* b) {
+                // Use g_entity_order to find position
+                auto pos = [](const String& id) -> int {
+                    for (int i = 0; i < (int)g_entity_order.size(); i++)
+                        if (g_entity_order[i] == id) return i;
+                    return (int)g_entity_order.size();
+                };
+                return pos(a->entity_id) < pos(b->entity_id);
+            });
+    }
+
     String out = "[";
     bool first = true;
-    for (const auto& e : dc.entities()) {
+    for (const auto* ep : sorted) {
         if (!first) out += ",";
         first = false;
+        const HAEntity& e = *ep;
         String type_str = (e.type == EntityType::LIGHT) ? "light" : "outlet";
         bool hid = ui.is_hidden(e.entity_id);
-        out += "{\"id\":\"" + e.entity_id +
-               "\",\"name\":\"" + e.friendly_name +
-               "\",\"area\":\"" + area_name(e.area_id) +
+        String custom = "";
+        auto it = g_custom_names.find(e.entity_id);
+        if (it != g_custom_names.end()) custom = it->second;
+        out += "{\"id\":\"" + json_esc(e.entity_id) +
+               "\",\"name\":\"" + json_esc(e.friendly_name) +
+               "\",\"area\":\"" + json_esc(area_name(e.area_id)) +
                "\",\"type\":\"" + type_str +
-               "\",\"hidden\":" + (hid ? "true" : "false") + "}";
+               "\",\"hidden\":" + (hid ? "true" : "false") +
+               ",\"custom_name\":\"" + json_esc(custom) + "\"}";
     }
     out += "]";
     app_srv.send(200, "application/json", out);
@@ -648,6 +766,54 @@ static void handle_api_set_hidden() {
     save_hidden_ids(ids);
     ui.set_hidden_ids(ids);
     ui.build_home();
+    app_srv.send(200, "application/json", "{\"ok\":true}");
+}
+
+// POST /api/save_devices — unified: order, custom names, hidden state.
+// Body: {"order":["id1","id2"],"names":{"id1":"name"},"hidden":["id3"]}
+static void handle_api_save_devices() {
+    String body = app_srv.arg("plain");
+    DynamicJsonDocument doc(8192);
+    if (deserializeJson(doc, body) != DeserializationError::Ok) {
+        app_srv.send(400, "application/json", "{\"ok\":false,\"msg\":\"Bad JSON\"}");
+        return;
+    }
+
+    // Build order CSV
+    String order_csv = "";
+    g_entity_order.clear();
+    for (JsonVariant v : doc["order"].as<JsonArray>()) {
+        String id = v.as<String>();
+        if (!order_csv.isEmpty()) order_csv += ",";
+        order_csv += id;
+        g_entity_order.push_back(id);
+    }
+
+    // Build hidden CSV
+    String hidden_csv = "";
+    for (JsonVariant v : doc["hidden"].as<JsonArray>()) {
+        if (!hidden_csv.isEmpty()) hidden_csv += ",";
+        hidden_csv += v.as<String>();
+    }
+
+    // Build names map and persist as JSON
+    g_custom_names.clear();
+    String names_json = "";
+    JsonObject names_obj = doc["names"].as<JsonObject>();
+    for (JsonPair p : names_obj) {
+        String name = p.value().as<String>();
+        if (!name.isEmpty()) g_custom_names[p.key().c_str()] = name;
+    }
+    serializeJson(names_obj, names_json);
+
+    save_device_meta(order_csv, names_json);
+    save_hidden_ids(hidden_csv);
+
+    ui.set_entity_order(g_entity_order);
+    ui.set_custom_names(g_custom_names);
+    ui.set_hidden_ids(hidden_csv);
+    ui.build_home();
+
     app_srv.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -663,9 +829,10 @@ static void start_app_server() {
     app_srv.on("/settings",     HTTP_GET, handle_settings_get);
     app_srv.on("/ota_check",        HTTP_GET, handle_ota_check);
     app_srv.on("/ota_update",       HTTP_GET, handle_ota_update);
-    app_srv.on("/api/devices",      HTTP_GET, handle_api_devices);
-    app_srv.on("/api/set_hidden",   HTTP_GET, handle_api_set_hidden);
-    app_srv.on("/proxy_dirigera",   HTTP_GET, handle_proxy_dirigera);
+    app_srv.on("/api/devices",       HTTP_GET,  handle_api_devices);
+    app_srv.on("/api/set_hidden",    HTTP_GET,  handle_api_set_hidden);
+    app_srv.on("/api/save_devices",  HTTP_POST, handle_api_save_devices);
+    app_srv.on("/proxy_dirigera",    HTTP_GET,  handle_proxy_dirigera);
     app_srv.begin();
     Serial.println("App server on :80");
 }
@@ -824,7 +991,8 @@ void setup() {
         // If we reach here: either up to date, or check failed — continue normally.
     }
 
-    // Apply persisted device visibility filter before building the home screen.
+    // Apply persisted device meta (order, custom names) and visibility filter.
+    apply_device_meta();
     ui.set_hidden_ids(load_hidden_ids());
 
     String dip  = load_dirigera_ip();
@@ -855,6 +1023,8 @@ void setup() {
 
 static uint32_t g_bat_last    = 0;
 static bool     g_was_charging = false;
+static bool     g_btn1_prev    = HIGH;   // BTN1 top-right  (HIGH = not pressed)
+static bool     g_btn2_prev    = HIGH;   // BTN2 bottom-right
 
 void loop() {
     app_srv.handleClient();
@@ -866,10 +1036,15 @@ void loop() {
         g_last_activity = millis();
         ui.go_home();
     }
-    // Any touch or button press resets the inactivity timer.
-    if (digitalRead(PIN_BTN1) == LOW || digitalRead(PIN_BTN2) == LOW ||
-        digitalRead(PIN_TOUCH_INT) == LOW)
-        g_last_activity = millis();
+    // Button edge detection: drive the active detail-panel slider.
+    // BTN1 (top)  → increase; BTN2 (bottom) → decrease.
+    bool btn1 = digitalRead(PIN_BTN1);
+    bool btn2 = digitalRead(PIN_BTN2);
+    if (!btn1 || !btn2 || !digitalRead(PIN_TOUCH_INT)) g_last_activity = millis();
+    if (g_btn1_prev && !btn1) { ui.btn_slider_step(+1); g_last_activity = millis(); }
+    if (g_btn2_prev && !btn2) { ui.btn_slider_step(-1); g_last_activity = millis(); }
+    g_btn1_prev = btn1;
+    g_btn2_prev = btn2;
 
     if (g_update_pending) { g_update_pending=false; ui.on_entity_update(g_pending_entity); }
 

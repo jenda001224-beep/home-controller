@@ -1,6 +1,7 @@
 #pragma once
 #include <lvgl.h>
 #include <vector>
+#include <map>
 #include "../ha/entity.h"
 #include "../dirigera/dirigera_client.h"
 
@@ -21,10 +22,21 @@ public:
     void set_hidden_ids(const String& ids);
     bool is_hidden(const String& id) const;
 
+    // Device ordering and custom names (local only, not sent to DIRIGERA)
+    void set_entity_order(const std::vector<String>& order);
+    void set_custom_names(const std::map<String,String>& names);
+    String get_display_name(const String& id, const String& fallback) const;
+
+    // Physical button control: adjusts the active slider in the detail panel.
+    // dir=+1 → increase brightness / move hue knob up; dir=-1 → decrease.
+    void btn_slider_step(int dir);
+
 private:
     DirigeraClient* _dc        = nullptr;
     uint8_t         _grid_cols = 1;   // 1=list, 2=grid, 3=compact grid
-    std::vector<String> _hidden_ids;  // entity IDs to skip when building tiles
+    std::vector<String> _hidden_ids;   // entity IDs to skip when building tiles
+    std::vector<String> _entity_order; // user-defined display order (entity IDs)
+    std::map<String,String> _custom_names; // entity_id → custom display name
 
     lv_obj_t* _scr_splash    = nullptr;
     lv_obj_t* _scr_home      = nullptr;

@@ -3,6 +3,7 @@
 #include "config.h"
 #include "fonts/fonts.h"
 #include <Arduino.h>
+#include <algorithm>
 
 // Runtime copies of the const font objects with fallback set to built-in Montserrat.
 // This is necessary because:
@@ -21,7 +22,7 @@ static constexpr int TILE_GAP  = 8;                        // small gap between 
 
 static const char* entity_icon(const HAEntity& e) {
     // Use the same reliable symbol per entity type — color shows on/off state
-    if (e.type == EntityType::LIGHT)  return LV_SYMBOL_IMAGE;   // picture/light glyph
+    if (e.type == EntityType::LIGHT)  return SYMBOL_BULB;   // FA5 lightbulb (U+F0EB)
     if (e.type == EntityType::SWITCH) return LV_SYMBOL_POWER;
     return LV_SYMBOL_SETTINGS;
 }
@@ -227,6 +228,54 @@ bool UI::is_hidden(const String& id) const {
     return false;
 }
 
+void UI::set_entity_order(const std::vector<String>& order) {
+    _entity_order = order;
+}
+
+void UI::set_custom_names(const std::map<String,String>& names) {
+    _custom_names = names;
+}
+
+String UI::get_display_name(const String& id, const String& fallback) const {
+    auto it = _custom_names.find(id);
+    if (it != _custom_names.end() && !it->second.isEmpty()) return it->second;
+    return fallback;
+}
+
+// Physical button: step the active slider in the open detail panel.
+// dir=+1 → increase (brightness +15, hue slider +10°); dir=-1 → decrease.
+void UI::btn_slider_step(int dir) {
+    if (!_detail_panel) return;
+
+    bool bri_active = _detail_bri_view &&
+                      !lv_obj_has_flag(_detail_bri_view, LV_OBJ_FLAG_HIDDEN);
+    bool col_active = _detail_col_view &&
+                      !lv_obj_has_flag(_detail_col_view, LV_OBJ_FLAG_HIDDEN);
+
+    if (bri_active && _detail_bri_pill) {
+        int val = lv_slider_get_value(_detail_bri_pill);
+        val = constrain(val + dir * 15, 1, 255);
+        _detail_updating = true;
+        lv_slider_set_value(_detail_bri_pill, val, LV_ANIM_OFF);
+        _detail_updating = false;
+        if (_dc && !_detail_entity_id.isEmpty())
+            _dc->set_brightness(_detail_entity_id, (uint8_t)val);
+
+    } else if (col_active && _detail_colorwheel) {
+        // Slider value 0–359; rainbow top=red(0°), so slider_val = 359 - hue.
+        // Increasing slider_val moves knob up (toward red at top).
+        int val = lv_slider_get_value(_detail_colorwheel) + dir * 10;
+        if (val < 0)   val += 360;
+        if (val > 359) val -= 360;
+        _detail_updating = true;
+        lv_slider_set_value(_detail_colorwheel, val, LV_ANIM_OFF);
+        _detail_updating = false;
+        float hue = 359.0f - (float)val;
+        if (_dc && !_detail_entity_id.isEmpty())
+            _dc->set_color_hs(_detail_entity_id, hue, 1.0f);
+    }
+}
+
 void UI::_build_tabs() {
     // Header
     lv_obj_t* header = lv_obj_create(_scr_home);
@@ -280,6 +329,29 @@ void UI::_build_tabs() {
 
     const auto& areas    = _dc->areas();
     const auto& entities = _dc->entities();
+
+    // Helper: collect visible entities for an area (empty aid = all areas),
+    // sorted by user-defined _entity_order (unordered items appended last).
+    auto sorted_for = [&](const String& aid) -> std::vector<const HAEntity*> {
+        std::vector<const HAEntity*> result;
+        for (const auto& e : entities) {
+            if (!aid.isEmpty() && e.area_id != aid) continue;
+            if (is_hidden(e.entity_id)) continue;
+            result.push_back(&e);
+        }
+        if (!_entity_order.empty()) {
+            std::stable_sort(result.begin(), result.end(),
+                [this](const HAEntity* a, const HAEntity* b) {
+                    auto pos = [this](const String& id) -> int {
+                        for (int i = 0; i < (int)_entity_order.size(); i++)
+                            if (_entity_order[i] == id) return i;
+                        return (int)_entity_order.size();
+                    };
+                    return pos(a->entity_id) < pos(b->entity_id);
+                });
+        }
+        return result;
+    };
 
     // Two-level layout:
     //   tab page  — NON-scrollable, so horizontal swipes fall through to tv_content → tab switch
@@ -342,20 +414,16 @@ void UI::_build_tabs() {
             lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
             lv_obj_align(lbl, LV_ALIGN_TOP_MID, 0, 40);
         } else {
-            for (const auto& e : entities)
-                if (!is_hidden(e.entity_id)) _add_tile(g, e);
+            for (const auto* ep : sorted_for("")) _add_tile(g, *ep);
         }
     } else {
         for (const auto& area : areas) {
-            int count = 0;
-            for (const auto& e : entities)
-                if (e.area_id == area.id && !is_hidden(e.entity_id)) count++;
-            if (count == 0) continue;
+            auto items = sorted_for(area.id);
+            if (items.empty()) continue;
             lv_obj_t* tab = lv_tabview_add_tab(_tabview, area.name.c_str());
             lv_obj_t* g   = make_grid(tab);
             _grids.push_back(g);
-            for (const auto& e : entities)
-                if (e.area_id == area.id && !is_hidden(e.entity_id)) _add_tile(g, e);
+            for (const auto* ep : items) _add_tile(g, *ep);
         }
     }
 }
@@ -364,6 +432,7 @@ void UI::_build_tabs() {
 
 void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
     bool list = (_grid_cols == 1);
+    String display_name = get_display_name(entity.entity_id, entity.friendly_name);
 
     // --- List mode: full-width horizontal row ---
     if (list) {
@@ -410,7 +479,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
         lv_obj_clear_flag(text_box, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t* name_lbl = lv_label_create(text_box);
-        lv_label_set_text(name_lbl, entity.friendly_name.c_str());
+        lv_label_set_text(name_lbl, display_name.c_str());
         lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_CLIP);
         lv_obj_set_width(name_lbl, TILE_W - 52 - 40);  // tile - icon_box - chevron
         lv_obj_set_style_text_color(name_lbl, C_TEXT, 0);
@@ -470,7 +539,7 @@ void UI::_add_tile(lv_obj_t* grid, const HAEntity& entity) {
     lv_obj_align(icon, LV_ALIGN_TOP_LEFT, 0, 0);
 
     lv_obj_t* name_lbl = lv_label_create(tile);
-    lv_label_set_text(name_lbl, entity.friendly_name.c_str());
+    lv_label_set_text(name_lbl, display_name.c_str());
     lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(name_lbl, lv_pct(100));
     lv_obj_set_style_text_color(name_lbl, C_TEXT, 0);
@@ -562,7 +631,7 @@ void UI::_show_detail(const String& entity_id) {
 
     // Device name
     _detail_title = lv_label_create(_detail_panel);
-    lv_label_set_text(_detail_title, e.friendly_name.c_str());
+    lv_label_set_text(_detail_title, get_display_name(e.entity_id, e.friendly_name).c_str());
     lv_obj_set_style_text_font(_detail_title, &_f22, 0);
     lv_obj_set_style_text_color(_detail_title, C_TEXT, 0);
     lv_obj_align(_detail_title, LV_ALIGN_TOP_MID, 0, 26);

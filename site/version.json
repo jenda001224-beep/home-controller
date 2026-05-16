@@ -1,9 +1,9 @@
 {
-  "version": "v5.44",
+  "version": "v5.45",
   "changes": [
-    "Oprava color slideru: hue uz odpovida pozici na paletce",
-    "Fonty: symboly a diakritika fungují (fallback na vestavenou Montserrat pro symboly)",
-    "Nastavení zařízení: na http://<IP> lze skrýt libovolná světla/zásuvky",
-    "Rychlejší probuzení a auto-OTA z v5.43"
+    "Ikonka žárovky místo krajinky pro světla (FontAwesome)",
+    "Helvetica font: diakritika funguje správně",
+    "Přejmenování a přeuspořádání zařízení na http://<IP>",
+    "Postranní tlačítka ovládají jas/barvu v detail panelu"
   ]
 }
